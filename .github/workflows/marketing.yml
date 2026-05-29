@@ -1,0 +1,52 @@
+name: Marketing site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "marketing/**"
+      - "scripts/build-brochure-pdf.ts"
+      - ".github/workflows/marketing.yml"
+  pull_request:
+    paths:
+      - "marketing/**"
+      - "scripts/build-brochure-pdf.ts"
+      - ".github/workflows/marketing.yml"
+  workflow_dispatch:
+
+# Cloudflare Pages publish requires:
+#   - CLOUDFLARE_API_TOKEN (Pages:Edit)
+#   - CLOUDFLARE_ACCOUNT_ID
+# Pages project: "qualitymate-marketing", custom domain qualitymate.com.au.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - run: npm ci
+
+      - name: Build brochure PDF
+        run: npm run marketing:brochure
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketing-site
+          path: marketing
+          retention-days: 14
+
+      - name: Deploy to Cloudflare Pages
+        if: github.ref == 'refs/heads/main'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy marketing --project-name=qualitymate-marketing --branch=main

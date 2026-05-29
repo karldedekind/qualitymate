@@ -1,0 +1,61 @@
+site_name: QualityMate
+site_url: https://docs.qualitymate.com.au
+site_description: Self-hosted ISO 9001 quality management for construction.
+site_author: QualityMate
+
+docs_dir: docs-site
+site_dir: site
+
+repo_url: https://github.com/karldedekind/qualitymate
+repo_name: karldedekind/qualitymate
+
+theme:
+  name: material
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+  palette:
+    - scheme: default
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - scheme: slate
+      primary: blue
+      accent: blue
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+
+nav:
+  - Home: index.md
+  - Setup: setup.md
+  - Admin Guide: admin-guide.md
+  - Site Staff Guide: site-staff-guide.md
+  - Site Check-in: site-checkin.md
+  - Backup and Restore: backup-restore.md
+  - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
+  - Changelog: changelog.md
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true

@@ -1,0 +1,57 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: qm
+      POSTGRES_PASSWORD: qm
+      POSTGRES_DB: qualitymate
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qm -d qualitymate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ${APP_IMAGE:-ghcr.io/karldedekind/qualitymate:1-stable}
+    build: .
+    restart: unless-stopped
+    labels:
+      com.centurylinklabs.watchtower.enable: "true"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://qm:qm@db:5432/qualitymate
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-secret-change-me-32bytes-min}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      RECOVERY_PASSPHRASE: ${RECOVERY_PASSPHRASE:-}
+      NODE_ENV: production
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/backups:/app/data/backups
+      - ./data/restore:/app/data/restore
+
+  # Auto-updates the `app` container on the configured schedule.
+  # Default schedule: 04:00 UTC on the 1st of each month.
+  # Profile-gated. Default `.env` sets WATCHTOWER_PROFILE=watchtower.
+  # To disable: set WATCHTOWER_ENABLED=false AND WATCHTOWER_PROFILE=disabled in .env.
+  watchtower:
+    image: containrrr/watchtower:latest
+    profiles:
+      - ${WATCHTOWER_PROFILE:-watchtower}
+    restart: unless-stopped
+    environment:
+      WATCHTOWER_CLEANUP: "true"
+      WATCHTOWER_INCLUDE_RESTARTING: "true"
+      WATCHTOWER_LABEL_ENABLE: "true"
+      WATCHTOWER_SCHEDULE: ${WATCHTOWER_SCHEDULE:-0 0 4 1 * *}
+      WATCHTOWER_NOTIFICATIONS: ${WATCHTOWER_NOTIFICATIONS:-}
+      WATCHTOWER_NOTIFICATION_URL: ${WATCHTOWER_NOTIFICATION_URL:-}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Contact — QualityMate</title>
+  <meta name="description" content="Talk to RIM Construction about QualityMate." />
+  <link rel="canonical" href="https://qualitymate.com.au/contact.html" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap nav-wrap">
+      <a href="/" class="brand"><span class="brand-mark">Q</span><span>QualityMate</span></a>
+      <nav>
+        <a href="/pricing.html">Pricing</a>
+        <a href="https://docs.qualitymate.com.au">Docs</a>
+        <a href="/contact.html" class="btn btn-ghost" aria-current="page">Contact</a>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap narrow">
+    <h1>Get in touch</h1>
+    <p class="lede">
+      Tell us what you're trying to do. We'll reply within one business day.
+    </p>
+
+    <form id="contact-form" method="POST" action="/contact" class="contact-form">
+      <label>
+        <span>Name</span>
+        <input name="name" type="text" required maxlength="120" autocomplete="name" />
+      </label>
+      <label>
+        <span>Company</span>
+        <input name="company" type="text" maxlength="120" autocomplete="organization" />
+      </label>
+      <label>
+        <span>Email</span>
+        <input name="email" type="email" required maxlength="200" autocomplete="email" />
+      </label>
+      <label>
+        <span>Phone (optional)</span>
+        <input name="phone" type="tel" maxlength="40" autocomplete="tel" />
+      </label>
+      <label>
+        <span>How can we help?</span>
+        <textarea name="message" rows="6" required maxlength="4000"></textarea>
+      </label>
+
+      <!-- Honeypot. Real users won't fill this. -->
+      <label class="hp" aria-hidden="true">
+        <span>Leave this empty</span>
+        <input name="website" type="text" tabindex="-1" autocomplete="off" />
+      </label>
+
+      <button type="submit" class="btn btn-primary">Send</button>
+      <p id="contact-status" class="status" role="status"></p>
+    </form>
+
+    <hr />
+
+    <p class="alt-contact">
+      Prefer email? <a href="mailto:hello@qualitymate.com.au">hello@qualitymate.com.au</a>
+    </p>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <p>© RIM Construction Pty Ltd. Built in Australia.</p>
+      <nav>
+        <a href="/pricing.html">Pricing</a>
+        <a href="https://docs.qualitymate.com.au">Docs</a>
+        <a href="/contact.html">Contact</a>
+      </nav>
+    </div>
+  </footer>
+
+  <script>
+    document.getElementById("contact-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const form = e.currentTarget;
+      const status = document.getElementById("contact-status");
+      status.textContent = "Sending…";
+      const data = Object.fromEntries(new FormData(form).entries());
+      try {
+        const res = await fetch("/contact", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        if (res.ok) {
+          status.textContent = "Thanks. We'll be in touch within one business day.";
+          form.reset();
+        } else {
+          const text = await res.text();
+          status.textContent = "Couldn't send: " + (text || res.status);
+        }
+      } catch (err) {
+        status.textContent = "Couldn't send: " + (err.message || "network error");
+      }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#1e40af"/>
+  <path d="M120 256l72 72 200-200" stroke="white" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <text x="256" y="448" font-family="system-ui, sans-serif" font-size="64" font-weight="700" fill="white" text-anchor="middle">QM</text>
+</svg>

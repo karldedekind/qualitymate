@@ -1,0 +1,69 @@
+import { spawnSync } from "node:child_process";
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { PostgreSqlContainer, type StartedPostgreSqlContainer } from "@testcontainers/postgresql";
+
+declare global {
+
+  var __E2E_PG__: StartedPostgreSqlContainer | undefined;
+}
+
+const CONFIG_FILE = join(process.cwd(), "e2e", ".e2e-config.json");
+
+const LOG = join(process.cwd(), "e2e", "setup.log");
+function log(msg: string) {
+  const line = `${new Date().toISOString()} ${msg}\n`;
+  process.stdout.write(line);
+  import("node:fs").then(({ appendFileSync }) => appendFileSync(LOG, line));
+}
+
+export default async function globalSetup() {
+  log("globalSetup start");
+  // Delete stale config so webServer waits for the fresh one
+  rmSync(CONFIG_FILE, { force: true });
+  rmSync(LOG, { force: true });
+
+  log("starting postgres container...");
+  const container = await new PostgreSqlContainer("postgres:16-alpine")
+    .withDatabase("qualitymate_e2e")
+    .withUsername("qm")
+    .withPassword("qm")
+    .start();
+  const databaseUrl = container.getConnectionUri();
+  log(`container up: ${databaseUrl}`);
+  globalThis.__E2E_PG__ = container;
+
+  writeFileSync(
+    CONFIG_FILE,
+    JSON.stringify(
+      {
+        databaseUrl,
+        port: 3001,
+        outboxDir: join(process.cwd(), "e2e", "outbox"),
+      },
+      null,
+      2,
+    ),
+  );
+
+  log("config written, running seed...");
+  // Run migrations + seed in a child process so libs that import @/db
+  // pick up DATABASE_URL cleanly.
+  const seed = spawnSync("npm", ["run", "-s", "e2e:seed"], {
+    stdio: "inherit",
+    env: {
+      ...process.env,
+      DATABASE_URL: databaseUrl,
+      BETTER_AUTH_SECRET: "e2e-secret-32-bytes-minimum-aaaaaa",
+      BETTER_AUTH_URL: "http://127.0.0.1:3001",
+      APP_URL: "http://127.0.0.1:3001",
+      INSTALL_PASSPHRASE: "e2e-install-passphrase-32bytes-aaaaa",
+      E2E: "1",
+    },
+  });
+  if (seed.status !== 0) {
+    log(`seed failed (status ${seed.status})`);
+    throw new Error(`e2e seed failed (status ${seed.status})`);
+  }
+  log("globalSetup done");
+}

@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #1e40af;
+}
+
+button[type="submit"] {
+  cursor: pointer;
+}
