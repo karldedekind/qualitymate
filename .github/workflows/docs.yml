@@ -6,12 +6,14 @@ on:
     paths:
       - "docs-site/**"
       - "mkdocs.yml"
+      - "requirements.txt"
       - "scripts/build-incident-card-pdf.ts"
       - ".github/workflows/docs.yml"
   pull_request:
     paths:
       - "docs-site/**"
       - "mkdocs.yml"
+      - "requirements.txt"
       - "scripts/build-incident-card-pdf.ts"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
