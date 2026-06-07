@@ -1,7 +1,7 @@
 # 5 Playwright E2E + CI gate
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build

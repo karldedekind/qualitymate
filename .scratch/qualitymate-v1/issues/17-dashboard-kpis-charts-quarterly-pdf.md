@@ -1,7 +1,7 @@
 # Role-aware dashboard + 4 KPIs + 4 charts + quarterly PDF print route
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build

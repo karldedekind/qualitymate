@@ -1,7 +1,7 @@
 # Nightly backup + weekly email + restore CLI + 7/4/12 retention + DR runbook + optional S3 offsite
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build

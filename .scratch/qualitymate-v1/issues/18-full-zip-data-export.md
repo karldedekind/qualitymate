@@ -1,7 +1,7 @@
 # Full ZIP data export — streaming, rate-limited, audited
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build

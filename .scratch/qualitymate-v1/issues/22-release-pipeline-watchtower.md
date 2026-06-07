@@ -1,7 +1,7 @@
 # Release pipeline — GHCR + GH Actions + canary tags + boot-time migrations + migration test CI + Watchtower bundled
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build
@@ -16,7 +16,7 @@ GitHub Actions builds and tags Docker images on push to `main`: `:1` (rolling la
 - [x] Watchtower in compose; `WATCHTOWER_ENABLED=false` (with profile flip) disables
 - [x] Migration test CI job runs on every PR; failure blocks merge
 - [x] CVE-patch workflow tags `:1-stable` directly, requires manual confirmation
-- [ ] Public registry pull works without auth (one-time manual step: mark GHCR package Public after first push)
+- [x] Public registry pull works without auth (one-time manual step: mark GHCR package Public after first push)
 
 ## Blocked by
 

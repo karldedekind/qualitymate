@@ -1,7 +1,7 @@
 # TOTP MFA — per-admin opt-in + admin-level require-all-admins toggle
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build

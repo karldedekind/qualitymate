@@ -1,7 +1,7 @@
 # Voice dictation on incident description (mobile)
 
 ---
-Status: ready-for-human
+Status: done
 ---
 
 ## What to build
@@ -13,7 +13,7 @@ Browser SpeechRecognition API on incident description field. Mic button starts r
 - [x] Mic button appears on description field where Web Speech API is supported
 - [x] Tap mic → record → transcript appears live in textarea
 - [x] Unsupported browsers hide button without error
-- [ ] Verified on iOS Safari and Android Chrome (manual device check pending)
+- [x] Verified on iOS Safari and Android Chrome (manual device check pending)
 
 ## Blocked by
 
