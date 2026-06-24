@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { asc, eq } from "drizzle-orm";
+import { db } from "@/db";
+import { categories } from "@/db/schema";
 import {
-  CATEGORIES,
   PRIORITIES,
   isConfigured as isAiConfigured,
   suggestStructure,
@@ -56,9 +58,16 @@ export async function suggestIncidentAction(formData: FormData) {
   const incident = await findById(parsed.data.id);
   if (!incident) return { error: "Incident not found." };
 
+  const cats = await db
+    .select({ code: categories.code, label: categories.label })
+    .from(categories)
+    .where(eq(categories.active, true))
+    .orderBy(asc(categories.sortOrder), asc(categories.code));
+
   const result = await suggestStructure({
     title: incident.title,
     description: incident.description,
+    categories: cats,
   });
 
   if (!result.ok) {
@@ -98,7 +107,7 @@ const ApplyTriageSchema = z.object({
   rootCause: z.string().max(2000).optional().nullable(),
   categoryId: z.string().optional().nullable(),
   source: z.enum(["ai", "manual"]).default("manual"),
-  suggestedCategory: z.enum(CATEGORIES).optional().nullable(),
+  suggestedCategory: z.string().max(120).optional().nullable(),
 });
 
 export async function applyTriageAction(formData: FormData) {
@@ -147,6 +156,39 @@ export async function applyTriageAction(formData: FormData) {
   });
 
   revalidatePath(`/admin/incidents/${parsed.data.id}`);
+  return { ok: true };
+}
+
+const AssignJobSchema = z.object({
+  id: z.string().min(1),
+  jobId: z.string().min(1, "Select a job"),
+});
+
+export async function assignJobAction(formData: FormData) {
+  const user = await requireUser();
+  if (user.role !== "admin") return { error: "Admin only." };
+  const meta = await getRequestMeta();
+
+  const parsed = AssignJobSchema.safeParse({
+    id: formData.get("id"),
+    jobId: formData.get("jobId"),
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const { assignJob } = await import("@/lib/incidents");
+  const result = await assignJob(parsed.data.id, parsed.data.jobId);
+  if (!result.ok) return { error: result.message };
+
+  await record({
+    actor: { id: user.id, email: user.email },
+    action: "incident.job.assign",
+    entity: { type: "incident", id: parsed.data.id },
+    after: { jobId: result.incident.jobId },
+    request: meta,
+  });
+
+  revalidatePath(`/admin/incidents/${parsed.data.id}`);
+  revalidatePath("/admin/incidents");
   return { ok: true };
 }
 

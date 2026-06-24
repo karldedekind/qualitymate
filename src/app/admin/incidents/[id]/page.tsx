@@ -10,7 +10,8 @@ import {
   findRegisterEntryByIncident,
   photosFor,
 } from "@/lib/incidents";
-import { findJobById } from "@/lib/jobs";
+import { findJobById, listJobs } from "@/lib/jobs";
+import { AssignJobPanel } from "./assign-job";
 import { CreateActionForm } from "./create-action";
 import { ReviewButton, CloseForm } from "./review-close";
 import { TriagePanel, type CategoryOption } from "./triage";
@@ -24,7 +25,12 @@ const STATUS_LABEL: Record<string, string> = {
   closed: "Closed",
 };
 
-type Props = { params: Promise<{ id: string }> };
+type Props = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ from?: string }>;
+};
+
+const BACK_TABS = new Set(["pending_review", "open", "closed"]);
 
 async function listActiveCategories(): Promise<CategoryOption[]> {
   const rows = await db
@@ -35,35 +41,46 @@ async function listActiveCategories(): Promise<CategoryOption[]> {
   return rows;
 }
 
-export default async function AdminIncidentDetailPage({ params }: Props) {
+export default async function AdminIncidentDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const { from } = await searchParams;
   const incident = await findById(id);
   if (!incident) notFound();
 
-  const [photos, job, registerEntry, aiAvailable, cats, actions, assignees] = await Promise.all([
-    photosFor(id),
-    incident.jobId ? findJobById(incident.jobId) : Promise.resolve(null),
-    findRegisterEntryByIncident(id),
-    isAiConfigured(),
-    listActiveCategories(),
-    listForIncident(id),
-    db
-      .select({ id: user.id, name: user.name, email: user.email })
-      .from(user)
-      .where(isNull(user.deactivatedAt))
-      .orderBy(asc(user.name)),
-  ]);
+  // Return to the tab the admin came from; default to the all-incidents list.
+  const backHref = from && BACK_TABS.has(from) ? `/admin/incidents?status=${from}` : "/admin/incidents";
+
+  const [photos, job, assignableJobs, registerEntry, aiAvailable, cats, actions, assignees] =
+    await Promise.all([
+      photosFor(id),
+      incident.jobId ? findJobById(incident.jobId) : Promise.resolve(null),
+      incident.jobId ? Promise.resolve([]) : listJobs({ activeOnly: true }),
+      findRegisterEntryByIncident(id),
+      isAiConfigured(),
+      listActiveCategories(),
+      listForIncident(id),
+      db
+        .select({ id: user.id, name: user.name, email: user.email })
+        .from(user)
+        .where(isNull(user.deactivatedAt))
+        .orderBy(asc(user.name)),
+    ]);
 
   return (
     <div className="space-y-6">
       <div>
-        <Link href="/admin/incidents" className="text-sm text-blue-700 hover:underline">
+        <Link href={backHref} className="text-sm text-blue-700 hover:underline">
           ← All incidents
         </Link>
         <h1 className="text-2xl font-semibold mt-2">{incident.title}</h1>
         <div className="text-sm text-slate-600">
           Status: <span className="font-medium">{STATUS_LABEL[incident.status] ?? incident.status}</span>
-          {job ? <> · Job <span className="font-mono">{job.number}</span> {job.name}</> : null}
+          {job ? (
+            <>
+              {" · "}Job <span className="font-mono">{job.number}</span> {job.name}
+              <span className="text-slate-400"> (set at recording)</span>
+            </>
+          ) : null}
           {" · "}Filed {incident.createdAt.toISOString()}
         </div>
       </div>
@@ -72,6 +89,13 @@ export default async function AdminIncidentDetailPage({ params }: Props) {
         <h2 className="text-base font-medium mb-2">Description</h2>
         <p className="whitespace-pre-wrap text-sm text-slate-800">{incident.description}</p>
       </section>
+
+      {!incident.jobId && (
+        <AssignJobPanel
+          id={incident.id}
+          jobs={assignableJobs.map((j) => ({ id: j.id, number: j.number, name: j.name }))}
+        />
+      )}
 
       {photos.length > 0 && (
         <section className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">

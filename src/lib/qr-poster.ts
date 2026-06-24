@@ -1,8 +1,6 @@
-import { join } from "node:path";
-import { readFile } from "node:fs/promises";
 import { findJobById, type Job } from "@/lib/jobs";
-import { getBranding, type Branding } from "@/lib/branding";
-import { uploadsRoot } from "@/lib/uploads";
+import { getBranding } from "@/lib/branding";
+import { INK, MUTED, PANEL_BG, DIVIDER, drawHeader } from "@/lib/pdf-theme";
 
 export type PosterOptions = {
   appUrl?: string;
@@ -17,15 +15,6 @@ export type PosterResult = {
 
 function checkInUrl(base: string, jobId: string): string {
   return `${base.replace(/\/$/, "")}/checkin?job=${encodeURIComponent(jobId)}`;
-}
-
-async function loadLogoBuffer(branding: Branding): Promise<Buffer | null> {
-  if (!branding.logoPath) return null;
-  try {
-    return await readFile(join(uploadsRoot(), branding.logoPath));
-  } catch {
-    return null;
-  }
 }
 
 export async function generatePoster(
@@ -56,73 +45,71 @@ export async function generatePoster(
 
   const pageWidth = doc.page.width;
   const pageHeight = doc.page.height;
+  const left = doc.page.margins.left;
+  const contentW = pageWidth - left * 2;
+  const accent = branding.primaryColor;
 
-  const logoBuf = await loadLogoBuffer(branding);
-  let headerY = 60;
-  if (logoBuf) {
-    try {
-      doc.image(logoBuf, 40, headerY, { fit: [80, 80] });
-    } catch {
-      // skip logo on decode failure
-    }
-  }
+  // Shared branded header (logo + company name + "Site Sign-In" + accent rule).
+  drawHeader(doc, branding, "Site Sign-In");
 
+  // Job identity, centred.
   doc
-    .fillColor(branding.primaryColor)
-    .fontSize(26)
-    .text(branding.companyName, 140, headerY, { align: "left" });
-
-  doc
-    .fillColor("#000")
-    .fontSize(16)
-    .text("Site sign-in", 140, headerY + 36);
-
-  headerY += 110;
-  doc
-    .fillColor("#000")
+    .fillColor(INK)
+    .font("Helvetica-Bold")
     .fontSize(40)
-    .text(`Job ${job.number}`, 40, headerY, { align: "center", width: pageWidth - 80 });
+    .text(`Job ${job.number}`, left, doc.y + 16, { align: "center", width: contentW });
   doc
-    .fontSize(20)
-    .fillColor("#333")
-    .text(job.name, 40, headerY + 60, { align: "center", width: pageWidth - 80 });
+    .font("Helvetica")
+    .fontSize(18)
+    .fillColor(MUTED)
+    .text(job.name, left, doc.y + 4, { align: "center", width: contentW });
 
-  const qrSize = 360;
+  // QR in a bordered panel.
+  const qrSize = 320;
+  const pad = 18;
+  const panelW = qrSize + pad * 2;
+  const panelX = (pageWidth - panelW) / 2;
+  const panelY = doc.y + 24;
+  doc.save();
+  doc.roundedRect(panelX, panelY, panelW, panelW, 8).fillAndStroke(PANEL_BG, DIVIDER);
+  doc.restore();
   const qrX = (pageWidth - qrSize) / 2;
-  const qrY = headerY + 130;
-  doc.image(qrPng, qrX, qrY, { width: qrSize, height: qrSize });
+  doc.image(qrPng, qrX, panelY + pad, { width: qrSize, height: qrSize });
 
+  // Call to action + fallback URL.
+  let y = panelY + panelW + 24;
   doc
-    .fillColor("#000")
-    .fontSize(14)
-    .text("Scan the QR code to sign in", 40, qrY + qrSize + 20, {
-      align: "center",
-      width: pageWidth - 80,
-    });
-
+    .fillColor(INK)
+    .font("Helvetica-Bold")
+    .fontSize(16)
+    .text("Scan the QR code to sign in", left, y, { align: "center", width: contentW });
+  y = doc.y + 6;
   doc
+    .font("Helvetica")
     .fontSize(10)
-    .fillColor("#555")
-    .text("Or open this URL on your phone:", 40, qrY + qrSize + 50, {
-      align: "center",
-      width: pageWidth - 80,
-    });
+    .fillColor(MUTED)
+    .text("Or open this URL on your phone:", left, y, { align: "center", width: contentW });
   doc
+    .font("Helvetica")
     .fontSize(11)
-    .fillColor("#1e40af")
-    .text(url, 40, qrY + qrSize + 66, {
+    .fillColor(accent)
+    .text(url, left, doc.y + 2, {
       align: "center",
-      width: pageWidth - 80,
+      width: contentW,
       link: url,
       underline: true,
     });
 
+  // Poster footer. Zero the bottom margin so text() in the margin band
+  // doesn't read as overflow and spawn a blank page.
+  doc.page.margins.bottom = 0;
   doc
+    .font("Helvetica")
     .fontSize(8)
-    .fillColor("#888")
-    .text(`Powered by QualityMate · ${branding.companyName}`, 40, pageHeight - 50, {
+    .fillColor(MUTED)
+    .text(`Powered by QualityMate · ${branding.companyName}`, left, pageHeight - 44, {
       align: "center",
-      width: pageWidth - 80,
+      width: contentW,
     });
 
   doc.end();

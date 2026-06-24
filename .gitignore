@@ -16,3 +16,7 @@ e2e/outbox
 docs-site/site-staff/incident-card.pdf
 site/
 marketing/qualitymate-brochure.pdf
+scripts/seed-*.ts
+scripts/seed-*.sql
+.scratch/
+scratchpad/

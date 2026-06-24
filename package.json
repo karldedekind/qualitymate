@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio",
     "scan:anomalies": "tsx scripts/scan-anomalies.ts",
     "seed:anomaly-hitl": "tsx scripts/seed-anomaly-hitl.ts",
+    "seed:incidents": "tsx scripts/seed-incidents.ts",
     "scan:actions": "tsx scripts/scan-actions.ts",
     "heartbeat:tick": "tsx scripts/heartbeat-tick.ts",
     "docs:incident-card": "tsx scripts/build-incident-card-pdf.ts",

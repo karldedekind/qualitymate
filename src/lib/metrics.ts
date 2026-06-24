@@ -20,6 +20,7 @@ export type Kpis = {
     | "cancelled"
     | "approved"
     | "none";
+  nextQuarterlyMeetingAt: Date | null;
 };
 
 /** All four KPI numbers in one round-trip-friendly call. */
@@ -37,9 +38,9 @@ export async function kpis(now: Date = new Date()): Promise<Kpis> {
          WHERE "status" = 'closed' AND "closed_at" IS NOT NULL`,
   );
   const upcoming = await db
-    .select({ status: meetings.status })
+    .select({ status: meetings.status, scheduledAt: meetings.scheduledAt })
     .from(meetings)
-    .where(gte(meetings.scheduledAt, now))
+    .where(and(eq(meetings.status, "scheduled"), gte(meetings.scheduledAt, now)))
     .orderBy(meetings.scheduledAt)
     .limit(1);
 
@@ -49,6 +50,43 @@ export async function kpis(now: Date = new Date()): Promise<Kpis> {
     avgDaysToClose:
       avg?.avg_days == null ? null : Math.round(Number(avg.avg_days) * 10) / 10,
     nextQuarterlyMeetingStatus: upcoming[0]?.status ?? "none",
+    nextQuarterlyMeetingAt: upcoming[0]?.scheduledAt ?? null,
+  };
+}
+
+export type QuickOpsCounts = {
+  jobs: number;
+  roster: number;
+  incidents: number;
+  actions: number;
+  meetings: number;
+};
+
+/** Live badge counts for the home-page Quality Operations tiles. */
+export async function quickOpsCounts(now: Date = new Date()): Promise<QuickOpsCounts> {
+  const [jobsRow] = await db.execute<{ n: number }>(
+    sql`SELECT COUNT(*)::int AS n FROM "jobs" WHERE "active" = true`,
+  );
+  const [rosterRow] = await db.execute<{ n: number }>(
+    sql`SELECT COUNT(*)::int AS n FROM "site_attendances"
+         WHERE "signed_in_at"::date = ${now.toISOString()}::date`,
+  );
+  const [incRow] = await db.execute<{ n: number }>(
+    sql`SELECT COUNT(*)::int AS n FROM "incidents" WHERE "status" <> 'closed'`,
+  );
+  const [actRow] = await db.execute<{ n: number }>(
+    sql`SELECT COUNT(*)::int AS n FROM "corrective_actions" WHERE "status" = 'open'`,
+  );
+  const [mtgRow] = await db.execute<{ n: number }>(
+    sql`SELECT COUNT(*)::int AS n FROM "meetings"
+         WHERE "status" = 'scheduled' AND "scheduled_at" >= ${now.toISOString()}`,
+  );
+  return {
+    jobs: Number(jobsRow?.n ?? 0),
+    roster: Number(rosterRow?.n ?? 0),
+    incidents: Number(incRow?.n ?? 0),
+    actions: Number(actRow?.n ?? 0),
+    meetings: Number(mtgRow?.n ?? 0),
   };
 }
 

@@ -65,7 +65,7 @@ export default async function AdminIncidentsPage({ searchParams }: { searchParam
                   <td className="px-3 py-2">{STATUS_LABEL[r.status] ?? r.status}</td>
                   <td className="px-3 py-2 text-right">
                     <Link
-                      href={`/admin/incidents/${r.id}`}
+                      href={`/admin/incidents/${r.id}?from=${active}`}
                       className="text-blue-700 hover:underline"
                     >
                       Open

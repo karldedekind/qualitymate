@@ -64,11 +64,9 @@ export function TriagePanel({ id, aiAvailable, current, categories }: Props) {
   const [suggestError, setSuggestError] = useState<string | null>(null);
   const [suggestedCategoryId, setSuggestedCategoryId] = useState<string>("");
 
-  function bestMatchCategoryId(semanticCategory: string): string {
-    const kw = semanticCategory.toLowerCase();
-    const match = categories.find(
-      (c) => c.label.toLowerCase().includes(kw) || c.code.toLowerCase().includes(kw),
-    );
+  function categoryIdByCode(code: string): string {
+    const want = code.trim().toLowerCase();
+    const match = categories.find((c) => c.code.toLowerCase() === want);
     return match?.id ?? "";
   }
 
@@ -84,7 +82,7 @@ export function TriagePanel({ id, aiAvailable, current, categories }: Props) {
       setSuggestError(result.error);
     } else if (result?.ok && result.suggestion) {
       setSuggestion(result.suggestion);
-      setSuggestedCategoryId(bestMatchCategoryId(result.suggestion.category));
+      setSuggestedCategoryId(categoryIdByCode(result.suggestion.category));
     }
   }
 

@@ -49,6 +49,38 @@ export default async function LoginPage({ searchParams }: Props) {
         </div>
       )}
       <LoginForm />
+
+      <div className="mt-10 pt-6 border-t border-slate-200">
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 mb-3">
+          On site?
+        </p>
+        <a
+          href="/checkin"
+          className="group flex items-center gap-4 rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm transition hover:border-slate-300 hover:shadow-md"
+        >
+          <span
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-white"
+            style={{ backgroundColor: brand.primaryColor }}
+            aria-hidden
+          >
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 11l3 3L22 4" />
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11" />
+            </svg>
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-medium text-slate-900">Subcontractor site sign-in</span>
+            <span className="block text-sm text-slate-500">No account needed — sign in to a job site</span>
+          </span>
+          <span
+            aria-hidden
+            className="text-lg text-slate-400 transition group-hover:translate-x-0.5"
+            style={{ color: brand.primaryColor }}
+          >
+            →
+          </span>
+        </a>
+      </div>
     </main>
   );
 }

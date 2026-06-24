@@ -14,21 +14,15 @@ import {
   kpis,
   myOpenActions,
   myRecentIncidents,
+  quickOpsCounts,
   topJobsByIncidentCount,
   type Kpis,
   type MyActionRow,
   type MyIncidentRow,
+  type QuickOpsCounts,
 } from "@/lib/metrics";
 
 export const dynamic = "force-dynamic";
-
-const STATUS_LABEL: Record<string, string> = {
-  scheduled: "Scheduled",
-  completed: "Completed",
-  cancelled: "Cancelled",
-  approved: "Approved",
-  none: "None upcoming",
-};
 
 export default async function DashboardPage() {
   const user = await requireUser();
@@ -150,16 +144,23 @@ function MyActionsList({ items }: { items: MyActionRow[] }) {
 }
 
 async function AdminDashboard() {
-  const [kpiData, trend, categories, actions, topJobs] = await Promise.all([
+  const [kpiData, trend, categories, actions, topJobs, opsCounts] = await Promise.all([
     kpis(),
     incidentTrend(12),
     categoryBreakdown(90),
     actionsByStatus(),
     topJobsByIncidentCount(5, 90),
+    quickOpsCounts(),
   ]);
 
   return (
     <div className="space-y-6">
+      <QuickOps counts={opsCounts} />
+
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 pt-2">
+        Reports
+      </h2>
+
       <KpiGrid kpis={kpiData} />
 
       <div className="grid lg:grid-cols-2 gap-6">
@@ -189,6 +190,41 @@ async function AdminDashboard() {
   );
 }
 
+const QUICK_OPS: { href: string; label: string; key: keyof QuickOpsCounts }[] = [
+  { href: "/admin/jobs", label: "Jobs", key: "jobs" },
+  { href: "/admin/roster", label: "Roster", key: "roster" },
+  { href: "/admin/incidents", label: "Incidents", key: "incidents" },
+  { href: "/admin/actions", label: "Actions", key: "actions" },
+  { href: "/admin/meetings", label: "Meetings", key: "meetings" },
+];
+
+function QuickOps({ counts }: { counts: QuickOpsCounts }) {
+  return (
+    <div>
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 mb-2">
+        Quality Operations
+      </h2>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+        {QUICK_OPS.map((op) => (
+          <Link
+            key={op.href}
+            href={op.href}
+            className="group relative flex flex-col items-center justify-center gap-1 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 shadow-sm ring-1 ring-transparent hover:bg-blue-100 hover:border-blue-400 hover:ring-blue-300 transition-colors"
+          >
+            <span className="absolute top-2 right-2 text-blue-400 group-hover:text-blue-600 transition-colors">
+              →
+            </span>
+            <span className="text-2xl font-semibold leading-none text-blue-800">
+              {counts[op.key]}
+            </span>
+            <span className="text-sm font-medium text-blue-700">{op.label}</span>
+          </Link>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function KpiGrid({ kpis }: { kpis: Kpis }) {
   const cards = [
     { label: "Open incidents", value: kpis.openIncidents.toString() },
@@ -201,8 +237,13 @@ function KpiGrid({ kpis }: { kpis: Kpis }) {
     {
       label: "Next quarterly meeting",
       value:
-        STATUS_LABEL[kpis.nextQuarterlyMeetingStatus] ??
-        kpis.nextQuarterlyMeetingStatus,
+        kpis.nextQuarterlyMeetingAt == null
+          ? "None scheduled"
+          : kpis.nextQuarterlyMeetingAt.toLocaleDateString("en-AU", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            }),
     },
   ];
   return (

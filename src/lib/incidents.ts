@@ -199,6 +199,39 @@ export async function applyTriage(id: string, patch: TriagePatch): Promise<Incid
   return row ?? null;
 }
 
+export type AssignJobResult =
+  | { ok: true; incident: Incident }
+  | { ok: false; code: "NOT_FOUND" | "JOB_ALREADY_SET" | "INVALID_JOB"; message: string };
+
+/**
+ * Set an incident's job after the fact — only allowed when no job was captured
+ * at recording time. A job specified by site staff is authoritative and cannot
+ * be changed here; this just fills the gap when it was left blank.
+ */
+export async function assignJob(id: string, jobId: string): Promise<AssignJobResult> {
+  const current = await findById(id);
+  if (!current) return { ok: false, code: "NOT_FOUND", message: "Incident not found." };
+  if (current.jobId) {
+    return {
+      ok: false,
+      code: "JOB_ALREADY_SET",
+      message: "This incident already has a job, set when it was recorded. It cannot be changed.",
+    };
+  }
+
+  const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  if (!job || !job.active) {
+    return { ok: false, code: "INVALID_JOB", message: "Selected job is not available." };
+  }
+
+  const [row] = await db
+    .update(incidents)
+    .set({ jobId, updatedAt: new Date() })
+    .where(eq(incidents.id, id))
+    .returning();
+  return { ok: true, incident: row };
+}
+
 export async function findRegisterEntryByIncident(
   incidentId: string,
 ): Promise<RegisterEntry | null> {

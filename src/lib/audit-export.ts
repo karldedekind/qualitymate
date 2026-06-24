@@ -1,4 +1,15 @@
 import type { AuditEvent } from "@/lib/audit";
+import {
+  DIVIDER,
+  INK,
+  MUTED,
+  contentBox,
+  drawFooters,
+  drawHeader,
+  drawMetaPanel,
+  ensureSpace,
+  formatDateTime,
+} from "@/lib/pdf-theme";
 
 function csvEscape(value: unknown): string {
   if (value == null) return "";
@@ -67,53 +78,72 @@ export async function toPdf(
   branding: PdfBranding,
   filters: PdfFilterSummary = {},
 ): Promise<Buffer> {
+  const accent = branding.primaryColor;
   const PDFDocument = (await import("pdfkit")).default;
-  const doc = new PDFDocument({ size: "A4", margin: 40 });
+  const doc = new PDFDocument({ size: "A4", margin: 40, bufferPages: true });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
 
-  doc
-    .fillColor(branding.primaryColor)
-    .fontSize(18)
-    .text(branding.companyName, { continued: true })
-    .fillColor("#000")
-    .fontSize(14)
-    .text("  —  Audit log export");
+  const { left, width } = contentBox(doc);
 
-  doc.moveDown(0.3);
-  doc.fontSize(9).fillColor("#555");
-  const meta: string[] = [`Generated: ${new Date().toISOString()}`];
-  if (filters.from) meta.push(`From: ${filters.from}`);
-  if (filters.to) meta.push(`To: ${filters.to}`);
-  if (filters.entityType) meta.push(`Entity: ${filters.entityType}`);
-  meta.push(`Rows: ${events.length}`);
-  doc.text(meta.join("    "));
+  drawHeader(doc, branding, "Audit Log Export");
 
-  doc.moveDown(0.6);
-  doc.fillColor("#000");
+  const period =
+    filters.from || filters.to ? `${filters.from ?? "—"}  to  ${filters.to ?? "—"}` : "All time";
+  const metaRows: [string, string][] = [
+    ["Period", period],
+    ["Entity", filters.entityType || "All"],
+    ["Rows", String(events.length)],
+  ];
+  drawMetaPanel(doc, metaRows);
+  doc.moveDown(1);
 
-  doc.fontSize(8);
+  if (events.length === 0) {
+    doc.fillColor(MUTED).font("Helvetica").fontSize(10).text("No events for this selection.", left, doc.y, { width });
+  }
+
   for (const e of events) {
+    // Keep the header line + first detail line together across page breaks.
+    const y = ensureSpace(doc, 34);
     doc
-      .fillColor("#000")
+      .moveTo(left, y - 4)
+      .lineTo(left + width, y - 4)
+      .lineWidth(0.5)
+      .strokeColor(DIVIDER)
+      .stroke();
+
+    const entity = `${e.entityType}${e.entityId ? `:${e.entityId}` : ""}`;
+    doc.font("Helvetica-Bold").fontSize(9).fillColor(accent).text(e.action, left, y, {
+      width: width * 0.5,
+      continued: true,
+    });
+    doc.font("Helvetica").fillColor(MUTED).text(`   ${entity}`, { continued: false });
+
+    doc
+      .font("Helvetica")
+      .fontSize(8)
+      .fillColor(MUTED)
       .text(
-        `${e.ts.toISOString()}    ${e.action}    ${e.entityType}${e.entityId ? `:${e.entityId}` : ""}`,
-        { continued: false },
+        `${formatDateTime(e.ts)}   ·   ${e.userEmailSnapshot ?? "(anonymous)"}   ·   ${e.ip ?? "no-ip"}`,
+        left,
+        doc.y,
+        { width },
       );
-    doc
-      .fillColor("#555")
-      .text(`    user=${e.userEmailSnapshot ?? "(anonymous)"}    ip=${e.ip ?? "-"}`);
+
+    doc.font("Courier").fontSize(7.5).fillColor(INK);
     if (e.before != null) {
-      doc.text(`    before: ${truncate(JSON.stringify(e.before), 240)}`);
+      doc.text(`before  ${truncate(JSON.stringify(e.before), 220)}`, left + 6, doc.y, { width: width - 6 });
     }
     if (e.after != null) {
-      doc.text(`    after:  ${truncate(JSON.stringify(e.after), 240)}`);
+      doc.text(`after   ${truncate(JSON.stringify(e.after), 220)}`, left + 6, doc.y, { width: width - 6 });
     }
-    doc.moveDown(0.3);
+    doc.moveDown(0.5);
   }
+
+  drawFooters(doc, branding.companyName);
 
   doc.end();
   return done;

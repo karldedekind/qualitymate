@@ -19,6 +19,17 @@ import { SmtpForm } from "./smtp-form";
 
 export const dynamic = "force-dynamic";
 
+function SettingsGroup({ heading, children }: { heading: string; children: React.ReactNode }) {
+  return (
+    <div className="space-y-4">
+      <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 border-b border-slate-200 pb-1">
+        {heading}
+      </h2>
+      {children}
+    </div>
+  );
+}
+
 export default async function AdminSettingsPage() {
   const admin = await requireAdmin();
   const branding = await getBranding();
@@ -56,96 +67,108 @@ export default async function AdminSettingsPage() {
   ]);
 
   return (
-    <div className="space-y-10">
+    <div className="space-y-12">
       <section>
         <h1 className="text-2xl font-semibold mb-1">Settings</h1>
-        <p className="text-slate-600 text-sm">Branding, ISO 9001, and email delivery.</p>
-      </section>
-
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-4">Branding</h2>
-        <BrandingForm initial={branding} />
-      </section>
-
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">Management representative</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Named admin recorded for ISO 9001 clause 5.3 evidence. Appears on quarterly PDFs.
+        <p className="text-slate-600 text-sm">
+          Branding &amp; ISO 9001, communications, security, AI, and backup.
         </p>
-        <ManagementRepForm admins={admins} currentId={currentRepId} />
       </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">Site check-in declarations</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Eight required declarations shown on the public <code>/checkin</code> form.
-        </p>
-        <DeclarationsForm initial={declarations} />
-      </section>
+      <SettingsGroup heading="Branding & ISO 9001">
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-4">Branding</h3>
+          <BrandingForm initial={branding} />
+        </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">AI assistance (BYOK)</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Optional. When configured, admins see a &ldquo;Suggest&rdquo; button on incident review.
-          Suggestions never auto-apply — admins choose to accept each field.
-        </p>
-        <AiKeyForm hasKey={aiConfigured} />
-      </section>
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">Management representative</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            Named admin recorded for ISO 9001 clause 5.3 evidence. Appears on quarterly PDFs.
+          </p>
+          <ManagementRepForm admins={admins} currentId={currentRepId} />
+        </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">Meeting distribution list</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Default recipients for approved minutes. Per-meeting overrides add to this list.
-        </p>
-        <DistributionForm initial={defaultDistribution} />
-      </section>
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">Site check-in declarations</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            Eight required declarations shown on the public <code>/checkin</code> form.
+          </p>
+          <DeclarationsForm initial={declarations} />
+        </section>
+      </SettingsGroup>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">SMTP (email delivery)</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          When unconfigured, notifications are still recorded in-app — only the email channel
-          is silent.
-        </p>
-        <SmtpForm
-          initial={{
-            host: host ?? "",
-            port: port ?? "587",
-            user: smtpUser ?? "",
-            fromEmail: fromEmail ?? "",
-            secure: secure === "true",
-            hasPassword: !!password,
-          }}
-          testTo={admin.email}
-        />
-      </section>
+      <SettingsGroup heading="Email & notifications">
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">SMTP (email delivery)</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            When unconfigured, notifications are still recorded in-app — only the email channel
+            is silent.
+          </p>
+          <SmtpForm
+            initial={{
+              host: host ?? "",
+              port: port ?? "587",
+              user: smtpUser ?? "",
+              fromEmail: fromEmail ?? "",
+              secure: secure === "true",
+              hasPassword: !!password,
+            }}
+            testTo={admin.email}
+          />
+        </section>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">Two-factor authentication policy</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          Force every admin account to enrol in TOTP. Each admin manages their own enrolment
-          under <span className="font-mono">/account/security</span>.
-        </p>
-        <MfaRequireForm initial={mfaRequired} />
-      </section>
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">Meeting distribution list</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            Default recipients for approved minutes. Per-meeting overrides add to this list.
+          </p>
+          <DistributionForm initial={defaultDistribution} />
+        </section>
+      </SettingsGroup>
 
-      <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
-        <h2 className="text-lg font-medium mb-1">Offsite backup (S3-compatible)</h2>
-        <p className="text-slate-600 text-sm mb-4">
-          When configured, the nightly backup pushes a copy to this bucket. Works with
-          AWS S3, Cloudflare R2, MinIO, and other S3-API providers.
-        </p>
-        <S3Form
-          initial={{
-            endpoint: s3Endpoint ?? "",
-            region: s3Region ?? "us-east-1",
-            bucket: s3Bucket ?? "",
-            accessKeyId: s3AccessKey ?? "",
-            prefix: s3Prefix ?? "qualitymate/",
-            forcePathStyle: s3PathStyle !== "false",
-            hasSecret: !!s3SecretKey,
-          }}
-        />
-      </section>
+      <SettingsGroup heading="Security">
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">Two-factor authentication policy</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            Force every admin account to enrol in TOTP. Each admin manages their own enrolment
+            under <span className="font-mono">/account/security</span>.
+          </p>
+          <MfaRequireForm initial={mfaRequired} />
+        </section>
+      </SettingsGroup>
+
+      <SettingsGroup heading="AI assistance">
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">AI assistance (BYOK)</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            Optional. When configured, admins see a &ldquo;Suggest&rdquo; button on incident review.
+            Suggestions never auto-apply — admins choose to accept each field.
+          </p>
+          <AiKeyForm hasKey={aiConfigured} />
+        </section>
+      </SettingsGroup>
+
+      <SettingsGroup heading="Backup & storage">
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-1">Offsite backup (S3-compatible)</h3>
+          <p className="text-slate-600 text-sm mb-4">
+            When configured, the nightly backup pushes a copy to this bucket. Works with
+            AWS S3, Cloudflare R2, MinIO, and other S3-API providers.
+          </p>
+          <S3Form
+            initial={{
+              endpoint: s3Endpoint ?? "",
+              region: s3Region ?? "us-east-1",
+              bucket: s3Bucket ?? "",
+              accessKeyId: s3AccessKey ?? "",
+              prefix: s3Prefix ?? "qualitymate/",
+              forcePathStyle: s3PathStyle !== "false",
+              hasSecret: !!s3SecretKey,
+            }}
+          />
+        </section>
+      </SettingsGroup>
     </div>
   );
 }

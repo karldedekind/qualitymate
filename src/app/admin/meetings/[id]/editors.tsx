@@ -261,6 +261,10 @@ export function MinutesEditor({
           >
             {aiPending ? "Drafting…" : "Draft minutes with AI"}
           </button>
+          <p className="text-xs text-purple-700">
+            No notes? Leave the box empty to draft a starting set of decisions, follow-ups and
+            notes from the quarter&rsquo;s incidents, actions and pre-pack.
+          </p>
           {!hasPack && (
             <p className="text-xs text-purple-700">
               Tip: generating a pack first gives the model more context.
@@ -582,57 +586,144 @@ export function DistributionEditor({
   );
 }
 
-export function CompleteCancelButtons({
+type MeetingStatus = "scheduled" | "completed" | "cancelled" | "approved";
+
+/**
+ * Single guidance banner above the stage panels. Tells the user the one thing
+ * to do next for the meeting's current state, and carries the "mark as held"
+ * transition (the gate that was previously buried at the bottom of the page).
+ */
+export function NextStepBanner({
   id,
   status,
+  hasPack,
+  hasMinutes,
+  allSigned,
+  isDirector,
+  distributed,
 }: {
   id: string;
-  status: "scheduled" | "completed" | "cancelled" | "approved";
+  status: MeetingStatus;
+  hasPack: boolean;
+  hasMinutes: boolean;
+  allSigned: boolean;
+  isDirector: boolean;
+  distributed: boolean;
 }) {
-  const [pending, setPending] = useState<"complete" | "cancel" | null>(null);
+  const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function onAct(action: "complete" | "cancel") {
-    if (action === "cancel" && !confirm("Cancel this meeting?")) return;
-    setPending(action);
+  async function onComplete() {
+    setPending(true);
     setError(null);
     const fd = new FormData();
     fd.append("id", id);
-    const result =
-      action === "complete"
-        ? await completeMeetingAction(fd)
-        : await cancelMeetingAction(fd);
-    setPending(null);
+    const result = await completeMeetingAction(fd);
+    setPending(false);
     if (result?.error) setError(result.error);
+    else if (typeof window !== "undefined") window.location.reload();
   }
 
-  if (status !== "scheduled") {
-    return (
-      <p className="text-sm text-slate-600">
-        Meeting is {status}.
-      </p>
-    );
+  let title = "";
+  let body = "";
+  let tone: "blue" | "green" | "slate" = "blue";
+  let showHeld = false;
+
+  if (status === "cancelled") {
+    tone = "slate";
+    title = "Meeting cancelled";
+    body = "This meeting was cancelled. Its record is read-only.";
+  } else if (status === "scheduled") {
+    title = "Prepare, then hold the meeting";
+    body = hasPack
+      ? "Pre-pack ready. Once the meeting has taken place, mark it as held to unlock minutes."
+      : "Optionally draft the pre-pack below. Once the meeting has taken place, mark it as held to unlock minutes.";
+    showHeld = true;
+  } else if (status === "completed" && !hasMinutes) {
+    title = "Record the minutes";
+    body =
+      "Capture attendees, decisions, and follow-ups below — or draft them from raw notes with AI.";
+  } else if (status === "completed" && !allSigned) {
+    title = "Collect attendee sign-offs";
+    body =
+      "Issue sign-off links in the Sign-off panel and share them with attendees. Approval unlocks once everyone has signed.";
+  } else if (status === "completed" && allSigned && isDirector) {
+    title = "Ready to approve";
+    body =
+      "All attendees have signed. Approve & lock in the Sign-off panel to finalise and email the minutes.";
+  } else if (status === "completed" && allSigned && !isDirector) {
+    title = "Awaiting approval";
+    body =
+      "All attendees have signed. The management representative now approves to finalise.";
+  } else if (status === "approved") {
+    tone = "green";
+    title = "Meeting approved";
+    body = distributed
+      ? "Minutes have been approved, locked, and emailed to the distribution list."
+      : "Minutes have been approved and locked.";
+  }
+
+  const toneClass =
+    tone === "green"
+      ? "border-green-200 bg-green-50"
+      : tone === "slate"
+        ? "border-slate-200 bg-slate-50"
+        : "border-blue-200 bg-blue-50";
+  const labelClass =
+    tone === "green" ? "text-green-600" : tone === "slate" ? "text-slate-400" : "text-blue-500";
+
+  return (
+    <section className={`rounded-lg border p-4 flex items-start justify-between gap-4 ${toneClass}`}>
+      <div>
+        <p className={`text-xs font-semibold uppercase tracking-wide ${labelClass}`}>Next step</p>
+        <h2 className="text-base font-medium text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-700 mt-0.5">{body}</p>
+        {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
+      </div>
+      {showHeld && (
+        <button
+          type="button"
+          onClick={onComplete}
+          disabled={pending}
+          className="shrink-0 rounded-md bg-green-700 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+        >
+          {pending ? "Saving…" : "Mark meeting as held →"}
+        </button>
+      )}
+    </section>
+  );
+}
+
+/** Quiet cancel control — only while still scheduled. Tucked at page bottom. */
+export function CancelControl({ id, status }: { id: string; status: MeetingStatus }) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (status !== "scheduled") return null;
+
+  async function onCancel() {
+    if (!confirm("Cancel this meeting? This cannot be undone.")) return;
+    setPending(true);
+    setError(null);
+    const fd = new FormData();
+    fd.append("id", id);
+    const result = await cancelMeetingAction(fd);
+    setPending(false);
+    if (result?.error) setError(result.error);
+    else if (typeof window !== "undefined") window.location.reload();
   }
 
   return (
-    <section className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm flex flex-wrap gap-3 items-center">
+    <div className="pt-4">
       <button
         type="button"
-        onClick={() => onAct("complete")}
-        disabled={pending !== null}
-        className="rounded-md bg-green-700 text-white px-4 py-2 text-sm font-medium disabled:opacity-50"
+        onClick={onCancel}
+        disabled={pending}
+        className="text-xs text-slate-500 underline hover:text-red-600 disabled:opacity-50"
       >
-        {pending === "complete" ? "Saving…" : "Mark completed"}
+        {pending ? "Cancelling…" : "Cancel this meeting"}
       </button>
-      <button
-        type="button"
-        onClick={() => onAct("cancel")}
-        disabled={pending !== null}
-        className="rounded-md bg-slate-200 text-slate-800 px-4 py-2 text-sm font-medium disabled:opacity-50"
-      >
-        {pending === "cancel" ? "Saving…" : "Cancel"}
-      </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-    </section>
+      {error && <p className="text-sm text-red-600 mt-1">{error}</p>}
+    </div>
   );
 }

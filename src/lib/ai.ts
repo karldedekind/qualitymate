@@ -32,12 +32,20 @@ export type Category = (typeof CATEGORIES)[number];
 export type Suggestion = {
   rootCause: string;
   priority: Priority;
-  category: Category;
+  /** A category code from the firm's list (or a generic CATEGORIES value). */
+  category: string;
 };
+
+export type CategoryChoice = { code: string; label: string };
 
 export type SuggestInput = {
   title: string;
   description: string;
+  /**
+   * The firm's actual incident categories. When provided, the model must pick
+   * one of these codes. Falls back to the generic CATEGORIES list when empty.
+   */
+  categories?: CategoryChoice[];
 };
 
 export type ProbeResult = { ok: true } | { ok: false; error: string };
@@ -47,9 +55,10 @@ export type SuggestResult =
   | { ok: false; code: "NOT_CONFIGURED" | "TRANSPORT" | "MALFORMED" | "REJECTED"; error: string };
 
 const SuggestionSchema = z.object({
+  reason: z.string().max(500).optional(),
   rootCause: z.string().min(1).max(2000),
   priority: z.enum(PRIORITIES),
-  category: z.enum(CATEGORIES),
+  category: z.string().min(1),
 });
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
@@ -129,13 +138,67 @@ export async function probe(
 }
 
 const SUGGEST_SYSTEM = `You are an ISO 9001 quality assistant for a construction firm.
-You triage site incidents into structured fields. Respond with a single JSON
-object matching this exact shape — no prose, no markdown, no code fences:
-{"rootCause": string, "priority": "low"|"medium"|"high"|"critical", "category": "safety"|"quality"|"documentation"|"equipment"|"environment"|"other"}
-Keep rootCause under 400 characters. Pick the single best category.`;
+You triage a site incident into structured fields, choosing a category from a
+fixed list supplied in the user message.
+
+Classification rules:
+- Choose the category that names the ROOT QUALITY CAUSE, not the surface symptom.
+- A safety hazard usually exists because a required control, procedure, or
+  specification was not followed. Prefer the category describing that failure
+  over a generic "safety" label.
+- Example: "Worker without hi-vis in plant zone" → the category meaning a
+  procedure/control was not followed (a PPE rule was not applied), NOT a
+  generic safety category.
+- "category" MUST be exactly one of the category codes listed in the user
+  message. Never invent a code.
+
+Respond with a single JSON object — no prose, no markdown, no code fences:
+{"reason": string, "rootCause": string, "priority": "low"|"medium"|"high"|"critical", "category": "<one of the listed codes>"}
+- reason: one short sentence justifying the category choice
+- rootCause: under 400 characters
+Pick the single best category even if uncertain — never leave it blank.`;
+
+function categoriesFor(input: SuggestInput): CategoryChoice[] {
+  if (input.categories && input.categories.length > 0) return input.categories;
+  return CATEGORIES.map((c) => ({ code: c, label: c }));
+}
+
+/**
+ * Resolve the model's category string to a valid code from the supplied list.
+ * Forces a best guess (never blank): exact code match → fuzzy label/word
+ * overlap → first category as last resort.
+ */
+function resolveCategoryCode(raw: string, cats: CategoryChoice[]): string {
+  if (cats.length === 0) return raw;
+  const want = raw.trim().toLowerCase();
+  const exact = cats.find((c) => c.code.toLowerCase() === want);
+  if (exact) return exact.code;
+  const fuzzy = cats.find(
+    (c) =>
+      c.label.toLowerCase().includes(want) ||
+      want.includes(c.code.toLowerCase()) ||
+      c.label
+        .toLowerCase()
+        .split(/\W+/)
+        .some((w) => w.length > 2 && want.includes(w)),
+  );
+  return (fuzzy ?? cats[0]!).code;
+}
 
 function buildUserPrompt(input: SuggestInput): string {
-  return `Title: ${input.title}\n\nDescription:\n${input.description}`;
+  const list = categoriesFor(input)
+    .map((c) => `- ${c.code}: ${c.label}`)
+    .join("\n");
+  return [
+    `Available categories (choose exactly one code):`,
+    list,
+    ``,
+    `Incident`,
+    `Title: ${input.title}`,
+    ``,
+    `Description:`,
+    input.description,
+  ].join("\n");
 }
 
 function extractText(payload: unknown): string | null {
@@ -180,7 +243,7 @@ export async function suggestStructure(
       suggestion: {
         rootCause: `E2E canned root cause for: ${input.title}`.slice(0, 1000),
         priority: "medium",
-        category: "safety",
+        category: input.categories?.[0]?.code ?? "safety",
       },
       usage: { inputTokens: 0, outputTokens: 0 },
     };
@@ -207,6 +270,7 @@ export async function suggestStructure(
       body: {
         model: MODEL,
         max_tokens: 600,
+        temperature: 0,
         system: SUGGEST_SYSTEM,
         messages: [{ role: "user", content: buildUserPrompt(input) }],
       },
@@ -260,7 +324,12 @@ export async function suggestStructure(
     };
   }
 
-  return { ok: true, suggestion: validated.data, usage: extractUsage(payload) };
+  const suggestion: Suggestion = {
+    rootCause: validated.data.rootCause,
+    priority: validated.data.priority,
+    category: resolveCategoryCode(validated.data.category, categoriesFor(input)),
+  };
+  return { ok: true, suggestion, usage: extractUsage(payload) };
 }
 
 const PackSchema = z.object({
@@ -279,12 +348,29 @@ export type MeetingPackInput = {
   actions: Array<{ title: string; status: string; deadline: string }>;
 };
 
+// Cross-cutting house style shared by both meeting-notes prompts (pre-pack and
+// minutes). Rules apply to the CONTENTS of the JSON fields, not the JSON
+// envelope. Tense is deliberately NOT set here — it differs per document and is
+// supplied by each prompt. Exported so the anti-drift test can assert both
+// compiled prompts share this single source.
+export const STYLE_GUIDE = `House style (applies to the text inside every JSON field):
+- Voice: third-person impersonal. No "I", "we", or "you"; write as a formal record.
+- Spelling: Australian English throughout (e.g. organisation, prioritise, programme, metre).
+- Agenda items: short noun phrases, sentence case, no trailing full stop.
+- Decisions: record what was resolved, in past tense (e.g. "Agreed to ...", "Resolved to ..."), sentence case, no trailing full stop.
+- Follow-ups: "<owner> to <action> by <date>" — name the owner and the date where stated.
+- Length: size the prose to the quarter's actual activity. Do not pad a quiet quarter with filler to hit a length target.`;
+
 const PACK_SYSTEM = `You prepare a quarterly management review pre-pack for an ISO 9001
 construction firm. Respond with a single JSON object — no prose, no markdown, no code fences:
 {"summary": string, "agenda": string[], "trends": string}
-- summary: 2–4 paragraph overview of the quarter
+- summary: 2–3 short paragraphs overviewing the quarter
 - agenda: 5–8 bullet items, each a short string
-- trends: 1–2 paragraph trend commentary tied to the data provided
+- trends: 1–2 short paragraphs of trend commentary tied to the data provided
+
+${STYLE_GUIDE}
+
+Framing: this is preparation for an upcoming meeting — use present/future framing.
 Keep tone factual and concise.`;
 
 function buildPackPrompt(input: MeetingPackInput): string {
@@ -339,6 +425,7 @@ async function callJson<T>(
       body: {
         model: MODEL,
         max_tokens: 1500,
+        temperature: 0.2,
         system,
         messages: [{ role: "user", content: userPrompt }],
       },
@@ -427,18 +514,69 @@ export type MeetingMinutesInput = {
   attendees: string[];
   pack: { summary: string; agenda: string[]; trends: string } | null;
   rawNotes: string;
+  /**
+   * Recent open incidents / actions, supplied as grounding ONLY. Used to name
+   * or disambiguate items the raw notes already reference — never as content
+   * to introduce. May be omitted.
+   */
+  register?: {
+    incidents: { title: string; status: string }[];
+    actions: { title: string; status: string; deadline: string }[];
+  } | null;
 };
 
-const MINUTES_SYSTEM = `You produce ISO 9001 management review minutes for a construction firm.
+// Source rules differ by mode. With facilitator notes, the notes are the only
+// source and the register is context-only (anti-fabrication fence). Without
+// notes, there is nothing to ground against, so produce a data-driven STARTING
+// DRAFT from the register + pre-pack for the user to edit before the meeting.
+const MINUTES_GROUNDED_RULES = `Grounding rules:
+- The facilitator's raw notes are the ONLY source of what occurred. Record only what the notes state took place.
+- A "Reference register" of recent incidents and corrective actions may be supplied for CONTEXT ONLY. Use it solely to correctly name or disambiguate items the notes already refer to. NEVER introduce incidents, actions, decisions, or follow-ups that are not present in the raw notes, and do not summarise the register.`;
+
+const MINUTES_DRAFT_RULES = `Drafting from data (no facilitator notes were provided):
+- No raw notes exist yet, so produce a STARTING DRAFT for the review to edit — this is not yet a final record.
+- Base every field on the supplied Reference register (recent incidents and corrective actions) and the pre-pack. Use ALL items provided.
+- decisions: propose the decisions this management review should make about the items — e.g. confirm a closure, accept a risk, escalate, or set a target — phrased as resolutions to confirm.
+- followUps: propose follow-up actions for the open items, naming the responsible party where the data gives one and the deadline where stated.
+- notes: summarise the quarter's position — incident themes and corrective-action progress — from the register and pre-pack.
+- Do not fabricate attendance or events that did not happen: leave attendees/apologies to what is provided.`;
+
+function minutesSystem(hasNotes: boolean): string {
+  return `You produce ISO 9001 management review minutes for a construction firm.
 Respond with a single JSON object — no prose, no markdown, no code fences:
 {"attendees": string[], "apologies": string[], "decisions": string[], "followUps": string[], "notes": string}
 - attendees: names from the input
 - apologies: people noted as absent (may be empty)
 - decisions: short actionable strings, one per decision
 - followUps: short strings naming the responsible party where stated
-- notes: 2–4 paragraph narrative of discussion`;
+- notes: 2–3 short paragraphs of discussion narrative
+
+${hasNotes ? MINUTES_GROUNDED_RULES : MINUTES_DRAFT_RULES}
+
+${STYLE_GUIDE}
+
+Framing: these are minutes for the official record — write in past tense.`;
+}
 
 function buildMinutesPrompt(input: MeetingMinutesInput): string {
+  const hasNotes = input.rawNotes.trim().length > 0;
+  const reg = input.register;
+  const registerLabel = hasNotes
+    ? `Reference register (CONTEXT ONLY — do not introduce anything not in the raw notes):`
+    : `Reference register (source data — draft the decisions, follow-ups and notes from these):`;
+  const registerBlock =
+    reg && (reg.incidents.length > 0 || reg.actions.length > 0)
+      ? [
+          registerLabel,
+          `Incidents (${reg.incidents.length}):`,
+          reg.incidents.map((i) => `- [${i.status}] ${i.title}`).join("\n") || "(none)",
+          `Corrective actions (${reg.actions.length}):`,
+          reg.actions
+            .map((a) => `- [${a.status}] ${a.title} (due ${a.deadline.slice(0, 10)})`)
+            .join("\n") || "(none)",
+        ].join("\n")
+      : null;
+
   return [
     `Meeting: ${input.meetingTitle}`,
     `Scheduled: ${input.scheduledAt}`,
@@ -446,8 +584,15 @@ function buildMinutesPrompt(input: MeetingMinutesInput): string {
     input.pack
       ? `Pre-pack summary:\n${input.pack.summary}\n\nAgenda:\n${input.pack.agenda.map((x) => `- ${x}`).join("\n")}\n\nTrends:\n${input.pack.trends}`
       : "(no pre-pack)",
-    `Raw notes from facilitator:\n${input.rawNotes || "(none)"}`,
-  ].join("\n\n");
+    registerBlock,
+    `Raw notes from facilitator:\n${
+      hasNotes
+        ? input.rawNotes
+        : "(none — no notes were taken; draft from the reference register and pre-pack above)"
+    }`,
+  ]
+    .filter((x): x is string => x != null)
+    .join("\n\n");
 }
 
 export async function draftMeetingMinutes(
@@ -466,5 +611,6 @@ export async function draftMeetingMinutes(
       } as MinutesDraft,
     };
   }
-  return callJson(MinutesSchema, MINUTES_SYSTEM, buildMinutesPrompt(input), transport);
+  const hasNotes = input.rawNotes.trim().length > 0;
+  return callJson(MinutesSchema, minutesSystem(hasNotes), buildMinutesPrompt(input), transport);
 }

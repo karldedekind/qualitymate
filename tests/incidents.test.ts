@@ -17,6 +17,15 @@ async function fileBasic(filedBy: string, title = "T") {
   return file({ filedBy, title, description: "desc" });
 }
 
+async function createJob(number: string, active = true) {
+  const { db } = await import("@/db");
+  const { jobs } = await import("@/db/schema");
+  const { randomBytes } = await import("node:crypto");
+  const id = randomBytes(8).toString("base64url");
+  await db.insert(jobs).values({ id, number, name: `Job ${number}`, active });
+  return id;
+}
+
 beforeAll(async () => {
   process.env.INSTALL_PASSPHRASE = "test-install-passphrase-32-bytes-min-aaaaa";
   process.env.UPLOADS_DIR = "/tmp/qualitymate-incident-test-uploads";
@@ -96,6 +105,49 @@ describe("close() — register entry creation", () => {
 
     const fetched = await findRegisterEntryByIncident(incident.id);
     expect(fetched?.id).toBe(closed.ok ? closed.registerEntry.id : "");
+  });
+});
+
+describe("assignJob — fill blank job, never overwrite", () => {
+  it("assigns a job when none was recorded", async () => {
+    const { assignJob, findById } = await import("@/lib/incidents");
+    const u = await createUser("a@example.com");
+    const incident = await fileBasic(u.id);
+    expect(incident.jobId).toBeNull();
+    const jobId = await createJob("J-100");
+
+    const r = await assignJob(incident.id, jobId);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.incident.jobId).toBe(jobId);
+    expect((await findById(incident.id))?.jobId).toBe(jobId);
+  });
+
+  it("refuses to change a job set at recording time", async () => {
+    const { file, assignJob, findById } = await import("@/lib/incidents");
+    const u = await createUser("a@example.com");
+    const original = await createJob("J-ORIG");
+    const other = await createJob("J-OTHER");
+    const incident = await file({ filedBy: u.id, title: "T", description: "d", jobId: original });
+
+    const r = await assignJob(incident.id, other);
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("JOB_ALREADY_SET");
+    expect((await findById(incident.id))?.jobId).toBe(original);
+  });
+
+  it("rejects an inactive or unknown job", async () => {
+    const { assignJob } = await import("@/lib/incidents");
+    const u = await createUser("a@example.com");
+    const incident = await fileBasic(u.id);
+    const inactive = await createJob("J-OFF", false);
+
+    const r1 = await assignJob(incident.id, inactive);
+    expect(r1.ok).toBe(false);
+    if (!r1.ok) expect(r1.code).toBe("INVALID_JOB");
+
+    const r2 = await assignJob(incident.id, "no-such-job");
+    expect(r2.ok).toBe(false);
+    if (!r2.ok) expect(r2.code).toBe("INVALID_JOB");
   });
 
   it("refuses second close attempt", async () => {

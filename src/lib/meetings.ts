@@ -248,6 +248,19 @@ export async function draftMinutes(
     return { ok: false, code: "AI_OFF", error: "AI not configured." };
   }
 
+  // All quarter incidents / actions. With facilitator notes these are grounding
+  // only (the prompt forbids introducing anything not in the notes). With no
+  // notes, they are the source the AI drafts the minutes from.
+  const { inc, acts } = await gatherQuarterData(new Date());
+  const register = {
+    incidents: inc.map((i) => ({ title: i.title, status: i.status })),
+    actions: acts.map((a) => ({
+      title: a.title,
+      status: a.status,
+      deadline: a.deadline.toISOString(),
+    })),
+  };
+
   const result = await draftMeetingMinutes(
     {
       meetingTitle: meeting.title,
@@ -261,6 +274,7 @@ export async function draftMinutes(
           }
         : null,
       rawNotes,
+      register,
     },
     transport,
   );

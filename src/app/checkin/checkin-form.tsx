@@ -12,10 +12,12 @@ export function CheckInForm({
   jobs,
   trades,
   declarations,
+  selectedJobId = "",
 }: {
   jobs: JobOption[];
   trades: string[];
   declarations: Declaration[];
+  selectedJobId?: string;
 }) {
   const router = useRouter();
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -87,7 +89,7 @@ export function CheckInForm({
           <select
             name="jobId"
             required
-            defaultValue=""
+            defaultValue={selectedJobId}
             className="w-full rounded-md border border-slate-300 px-3 py-2"
           >
             <option value="" disabled>Select a job…</option>

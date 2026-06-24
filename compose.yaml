@@ -25,7 +25,7 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://qm:qm@db:5432/qualitymate
-      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:-dev-secret-change-me-32bytes-min}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set a strong unique secret, e.g. openssl rand -base64 32}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       APP_URL: ${APP_URL:-http://localhost:3000}
       RECOVERY_PASSPHRASE: ${RECOVERY_PASSPHRASE:-}

@@ -1,7 +1,25 @@
 import type { Meeting } from "@/lib/meetings";
 import type { Branding } from "@/lib/branding";
+import {
+  INK,
+  MUTED,
+  type PdfDoc,
+  contentBox,
+  drawFooters,
+  drawHeader,
+  drawMetaPanel,
+  formatDateTime,
+  sectionHeading,
+} from "@/lib/pdf-theme";
 
-/** Render approved meeting minutes as a single A4 PDF. Returns the file bytes. */
+const STATUS_LABEL: Record<string, string> = {
+  scheduled: "Scheduled",
+  completed: "Completed",
+  cancelled: "Cancelled",
+  approved: "Approved",
+};
+
+/** Render approved meeting minutes as a branded A4 PDF. Returns the file bytes. */
 export async function renderMinutesPdf(
   meeting: Meeting,
   branding: Branding,
@@ -10,75 +28,84 @@ export async function renderMinutesPdf(
     throw new Error("Cannot render minutes PDF: meeting has no minutes.");
   }
   const minutes = meeting.minutes;
+  const accent = branding.primaryColor;
 
   const PDFDocument = (await import("pdfkit")).default;
-  const doc = new PDFDocument({ size: "A4", margin: 48 });
+  const doc = new PDFDocument({ size: "A4", margin: 48, bufferPages: true });
   const chunks: Buffer[] = [];
   doc.on("data", (c: Buffer) => chunks.push(c));
   const done = new Promise<Buffer>((resolve) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
 
-  doc
-    .fillColor(branding.primaryColor)
-    .fontSize(20)
-    .text(branding.companyName);
-  doc.fillColor("#000").fontSize(16).text("Meeting minutes");
-  doc.moveDown(0.4);
+  const { left, width } = contentBox(doc);
 
-  doc.fontSize(13).text(meeting.title);
-  doc
-    .fontSize(10)
-    .fillColor("#555")
-    .text(`Scheduled: ${meeting.scheduledAt.toISOString()}`);
-  if (meeting.location) doc.text(`Location: ${meeting.location}`);
-  if (meeting.approvedAt) {
-    doc.text(`Approved: ${meeting.approvedAt.toISOString()}`);
-  }
-  doc.fillColor("#000");
-  doc.moveDown(0.6);
+  drawHeader(doc, branding, "Meeting Minutes");
 
-  section(doc, "Attendees", minutes.attendees);
-  if (minutes.apologies.length > 0) section(doc, "Apologies", minutes.apologies);
-  section(doc, "Decisions", minutes.decisions);
-  if (minutes.followUps.length > 0) section(doc, "Follow-ups", minutes.followUps);
+  const metaRows: [string, string][] = [
+    ["Meeting", meeting.title],
+    ["Scheduled", formatDateTime(meeting.scheduledAt)],
+  ];
+  if (meeting.location) metaRows.push(["Location", meeting.location]);
+  if (meeting.approvedAt) metaRows.push(["Approved", formatDateTime(meeting.approvedAt)]);
+  metaRows.push(["Status", STATUS_LABEL[meeting.status] ?? meeting.status]);
+
+  drawMetaPanel(doc, metaRows);
+  doc.moveDown(1);
+
+  section(doc, "Attendees", minutes.attendees, accent);
+  if (minutes.apologies.length > 0) section(doc, "Apologies", minutes.apologies, accent);
+  section(doc, "Decisions", minutes.decisions, accent);
+  if (minutes.followUps.length > 0) section(doc, "Follow-ups", minutes.followUps, accent);
 
   if (minutes.notes.trim()) {
-    doc.fontSize(12).text("Notes");
-    doc.moveDown(0.2);
-    doc.fontSize(10).text(minutes.notes, { align: "left" });
-    doc.moveDown(0.5);
+    sectionHeading(doc, "Notes", accent);
+    doc
+      .fillColor(INK)
+      .font("Helvetica")
+      .fontSize(10)
+      .text(minutes.notes.trim(), left, doc.y, { width, align: "left" });
+    doc.moveDown(0.8);
   }
 
   if (meeting.signoffs.length > 0) {
-    doc.fontSize(12).text("Signoffs");
-    doc.moveDown(0.2);
-    doc.fontSize(10);
+    sectionHeading(doc, "Sign-offs", accent);
     for (const s of meeting.signoffs) {
-      doc.text(
-        `${s.name}${s.email ? ` <${s.email}>` : ""} — ${s.signedAt}${s.ip ? ` (${s.ip})` : ""}`,
-      );
+      doc
+        .fillColor(INK)
+        .font("Helvetica-Bold")
+        .fontSize(10)
+        .text(s.name, left, doc.y, { width });
+      if (s.email) {
+        doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(s.email, left, doc.y, { width });
+      }
+      const meta = `Signed ${formatDateTime(s.signedAt)}${s.ip ? `  ·  ${s.ip}` : ""}`;
+      doc.fillColor(MUTED).font("Helvetica").fontSize(9).text(meta, left, doc.y, { width });
+      doc.moveDown(0.5);
     }
   }
+
+  drawFooters(doc, branding.companyName);
 
   doc.end();
   return done;
 }
 
-type PdfDoc = {
-  fontSize: (n: number) => PdfDoc;
-  text: (text: string, opts?: Record<string, unknown>) => PdfDoc;
-  moveDown: (n?: number) => PdfDoc;
-};
-
-function section(doc: PdfDoc, title: string, items: string[]): void {
-  doc.fontSize(12).text(title);
-  doc.moveDown(0.2);
-  doc.fontSize(10);
+function section(doc: PdfDoc, title: string, items: string[], accent: string): void {
+  const { left, width } = contentBox(doc);
+  sectionHeading(doc, title, accent);
+  doc.font("Helvetica").fontSize(10);
   if (items.length === 0) {
-    doc.text("(none)");
+    doc.fillColor(MUTED).text("(none)", left, doc.y, { width });
   } else {
-    for (const it of items) doc.text(`• ${it}`);
+    // Native list = reliable pagination + hanging indent for wrapped lines.
+    doc.fillColor(INK).list(items, left, doc.y, {
+      width,
+      bulletRadius: 1.6,
+      textIndent: 12,
+      bulletIndent: 0,
+      lineGap: 2,
+    });
   }
-  doc.moveDown(0.5);
+  doc.moveDown(0.8);
 }
