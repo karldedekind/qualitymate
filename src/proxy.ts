@@ -7,7 +7,13 @@ export function proxy(req: NextRequest) {
   const needsAuth = PROTECTED_PREFIXES.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   if (!needsAuth) return NextResponse.next();
 
-  const sessionCookie = req.cookies.get("qm.session_token") ?? req.cookies.get("qm.session_data");
+  // Over HTTPS, Better-Auth prefixes cookies with `__Secure-`; over http (dev)
+  // it doesn't. Check both so the auth gate works in production and locally.
+  const sessionCookie =
+    req.cookies.get("__Secure-qm.session_token") ??
+    req.cookies.get("qm.session_token") ??
+    req.cookies.get("__Secure-qm.session_data") ??
+    req.cookies.get("qm.session_data");
   if (!sessionCookie) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
