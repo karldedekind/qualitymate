@@ -38,7 +38,8 @@ test("admin schedules meeting, drafts pack & minutes, attendee signs, director a
 
   // Draft minutes via AI (unlocked now that status = completed).
   await page.getByRole("button", { name: /draft minutes with ai/i }).first().click({ timeout: 30_000 });
-  await expect(page.getByText(/E2E notes/i).first()).toBeVisible({ timeout: 30_000 });
+  // Drafted minutes land in the notes textarea — assert its value, not visible text.
+  await expect(page.locator('textarea[name="notes"]')).toHaveValue(/E2E notes/i, { timeout: 30_000 });
   // Save the minutes so they're persisted (required before signoff links can be issued).
   await page.getByRole("button", { name: /save minutes/i }).first().click({ timeout: 15_000 });
   await page.waitForLoadState("networkidle");
