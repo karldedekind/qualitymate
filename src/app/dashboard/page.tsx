@@ -185,6 +185,13 @@ async function AdminDashboard() {
         >
           Download quarterly report (PDF)
         </Link>
+        <Link
+          href="/incidents/new"
+          className="inline-flex items-center gap-2 rounded-md border border-blue-700 bg-white text-blue-700 hover:bg-blue-50 px-4 py-2 text-sm font-medium transition-colors"
+        >
+          <span className="text-lg leading-none">+</span>
+          File an Incident
+        </Link>
       </div>
     </div>
   );

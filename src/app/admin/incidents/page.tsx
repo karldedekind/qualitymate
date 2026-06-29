@@ -21,11 +21,20 @@ export default async function AdminIncidentsPage({ searchParams }: { searchParam
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold mb-1">Incidents</h1>
-        <p className="text-slate-600 text-sm">
-          Triage submissions. Move pending to open, then close with a reason.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">Incidents</h1>
+          <p className="text-slate-600 text-sm">
+            Triage submissions. Move pending to open, then close with a reason.
+          </p>
+        </div>
+        <Link
+          href="/incidents/new"
+          className="inline-flex items-center gap-2 rounded-md border border-blue-700 bg-white text-blue-700 hover:bg-blue-50 px-4 py-2 text-sm font-medium transition-colors shrink-0"
+        >
+          <span className="text-lg leading-none">+</span>
+          File an Incident
+        </Link>
       </div>
 
       <nav className="flex gap-2 text-sm">
