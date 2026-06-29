@@ -26,6 +26,7 @@ services:
     environment:
       DATABASE_URL: postgres://qm:qm@db:5432/qualitymate
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set a strong unique secret, e.g. openssl rand -base64 32}
+      INSTALL_PASSPHRASE: ${INSTALL_PASSPHRASE:?set the encryption-at-rest key, e.g. openssl rand -base64 32}
       BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
       APP_URL: ${APP_URL:-http://localhost:3000}
       RECOVERY_PASSPHRASE: ${RECOVERY_PASSPHRASE:-}
