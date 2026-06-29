@@ -32,7 +32,8 @@ services:
       RECOVERY_PASSPHRASE: ${RECOVERY_PASSPHRASE:-}
       NODE_ENV: production
     ports:
-      - "3000:3000"
+      # Loopback only — the host Apache reverse-proxies to this; never exposed raw.
+      - "127.0.0.1:3000:3000"
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/backups:/app/data/backups
