@@ -36,12 +36,12 @@ test("admin schedules meeting, drafts pack & minutes, attendee signs, director a
   // Verify status changed (next-step panel shows "Record the minutes" once completed without minutes).
   await expect(page.getByText(/record the minutes/i).first()).toBeVisible({ timeout: 15_000 });
 
-  // Draft minutes via AI (unlocked now that status = completed).
+  // Draft minutes via AI — the action persists the minutes and reloads into
+  // the "recorded" view, advancing the flow to sign-off (no manual save step).
   await page.getByRole("button", { name: /draft minutes with ai/i }).first().click({ timeout: 30_000 });
-  // Drafted minutes land in the notes textarea — assert its value, not visible text.
-  await expect(page.locator('textarea[name="notes"]')).toHaveValue(/E2E notes/i, { timeout: 30_000 });
-  // Save the minutes so they're persisted (required before signoff links can be issued).
-  await page.getByRole("button", { name: /save minutes/i }).first().click({ timeout: 15_000 });
+  // Minutes are saved automatically; the sign-off step unlocking proves they
+  // persisted (the "Issue signoff links" control only renders once minutes exist).
+  await expect(page.getByRole("button", { name: /issue signoff links/i }).first()).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
 
   // Issue signoff links — URLs appear in the amber box once only.

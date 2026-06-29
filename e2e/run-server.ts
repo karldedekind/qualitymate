@@ -23,6 +23,20 @@ async function waitForPort(port: number, timeoutMs = 30_000) {
   throw new Error(`Port ${port} did not open within ${timeoutMs}ms`);
 }
 
+async function waitForPgReady(container: string, timeoutMs = 30_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = spawnSync(
+      "docker",
+      ["exec", container, "pg_isready", "-U", "qm", "-d", "qualitymate_e2e"],
+      { stdio: "ignore" },
+    );
+    if (r.status === 0) return;
+    await new Promise((res) => setTimeout(res, 500));
+  }
+  throw new Error(`Postgres in ${container} not ready within ${timeoutMs}ms`);
+}
+
 async function main() {
   // Stop any leftover container from a previous run
   try { execSync(`docker rm -f ${CONTAINER_NAME}`, { stdio: "ignore" }); } catch {}
@@ -37,7 +51,7 @@ async function main() {
 
   console.log("[e2e:server] waiting for postgres...");
   await waitForPort(PG_PORT, 30_000);
-  await new Promise((r) => setTimeout(r, 1_000)); // postgres init scripts
+  await waitForPgReady(CONTAINER_NAME, 30_000); // accept-queries readiness, not just an open port
 
   const outboxDir = join(process.cwd(), "e2e", "outbox");
   const uploadsDir = resolve(process.cwd(), "e2e", "uploads");
