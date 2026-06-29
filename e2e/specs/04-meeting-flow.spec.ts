@@ -29,12 +29,12 @@ test("admin schedules meeting, drafts pack & minutes, attendee signs, director a
   await page.getByRole("button", { name: /save pack/i }).click({ timeout: 30_000 });
   await page.waitForLoadState("networkidle");
 
-  // Mark meeting as completed — unlocks MinutesEditor.
-  await page.locator('button:has-text("Mark completed")').first().click({ timeout: 15_000 });
+  // Mark meeting as held — moves status to completed, unlocks MinutesEditor.
+  await page.locator('button:has-text("Mark meeting as held")').first().click({ timeout: 15_000 });
   await page.waitForLoadState("networkidle");
   await page.reload();
-  // Verify status changed (CompleteCancelButtons shows "Meeting is completed." for non-scheduled status).
-  await expect(page.getByText(/meeting is completed/i).first()).toBeVisible({ timeout: 15_000 });
+  // Verify status changed (next-step panel shows "Record the minutes" once completed without minutes).
+  await expect(page.getByText(/record the minutes/i).first()).toBeVisible({ timeout: 15_000 });
 
   // Draft minutes via AI (unlocked now that status = completed).
   await page.getByRole("button", { name: /draft minutes with ai/i }).first().click({ timeout: 30_000 });
