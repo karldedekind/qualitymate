@@ -20,3 +20,4 @@ scripts/seed-*.ts
 scripts/seed-*.sql
 .scratch/
 scratchpad/
+tsconfig.tsbuildinfo

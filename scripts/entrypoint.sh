@@ -8,6 +8,13 @@ chmod 600 /etc/cron-env
 # Start cron daemon in background
 crond -b -l 8
 
+# Bind-mounted data dirs inherit host ownership, which may not match the
+# nextjs user. Fix ownership at runtime (we are still root here) so the app
+# can create upload/backup subdirs. See uploads.ts mkdir + EACCES on branding.
+for d in /app/data/uploads /app/data/backups /app/data/restore; do
+  [ -d "$d" ] && chown -R nextjs:nodejs "$d"
+done
+
 echo "[entrypoint] running migrations…"
 su-exec nextjs node node_modules/tsx/dist/cli.mjs src/db/migrate.ts
 
