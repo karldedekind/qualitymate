@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import { desc, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { heartbeatInstances, heartbeats } from "@/db/schema";
@@ -32,7 +33,10 @@ export async function ingest(opts: {
     return { ok: false, reason: "unauthorized", message: "Ingest disabled" };
   }
   const provided = (opts.authHeader ?? "").replace(/^Bearer\s+/i, "");
-  if (provided !== expected) {
+  // Hash both sides so buffers are equal length for the timing-safe compare
+  const providedDigest = createHash("sha256").update(provided).digest();
+  const expectedDigest = createHash("sha256").update(expected).digest();
+  if (!timingSafeEqual(providedDigest, expectedDigest)) {
     return { ok: false, reason: "unauthorized", message: "Bad token" };
   }
   if (!isValidPayload(opts.body)) {
