@@ -33,7 +33,7 @@ export function ResolveButton({ id }: { id: string }) {
   }
 
   return (
-    <form action={onSubmit} className="space-y-2 w-72">
+    <form action={onSubmit} className="space-y-2 w-full max-w-72">
       <textarea
         name="note"
         rows={2}

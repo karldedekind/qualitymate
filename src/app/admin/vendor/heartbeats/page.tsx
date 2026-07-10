@@ -78,6 +78,7 @@ export default async function VendorHeartbeatsPage() {
             customer install enable heartbeats pointing at this server.
           </p>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="text-left text-slate-500">
               <tr>
@@ -104,6 +105,7 @@ export default async function VendorHeartbeatsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
       </section>
     </div>

@@ -52,18 +52,21 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <BrandedHeader showSignOut />
       </div>
       <div className="flex-1 mx-auto max-w-6xl px-4 py-6 w-full grid md:grid-cols-[200px_1fr] gap-6 print:block print:max-w-none print:px-0 print:py-0">
-        <nav className="text-sm print:hidden space-y-5">
+        <nav className="text-sm print:hidden flex gap-1.5 overflow-x-auto -mx-4 px-4 pb-1 md:block md:mx-0 md:px-0 md:pb-0 md:space-y-5 md:overflow-visible">
           {NAV_GROUPS.map((group) => (
-            <div key={group.heading ?? "overview"}>
+            <div key={group.heading ?? "overview"} className="contents md:block">
               {group.heading && (
-                <p className="px-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                <p className="hidden md:block px-2 mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                   {group.heading}
                 </p>
               )}
-              <ul className="space-y-1">
+              <ul className="contents md:block md:space-y-1">
                 {group.links.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className="block px-2 py-1 rounded hover:bg-slate-100">
+                  <li key={link.href} className="shrink-0">
+                    <Link
+                      href={link.href}
+                      className="block whitespace-nowrap rounded border border-slate-200 bg-white px-3 py-2 hover:bg-slate-100 md:border-0 md:bg-transparent md:px-2 md:py-1"
+                    >
                       {link.label}
                     </Link>
                   </li>
@@ -72,7 +75,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             </div>
           ))}
         </nav>
-        <main>{children}</main>
+        <main className="min-w-0">{children}</main>
       </div>
     </div>
   );
