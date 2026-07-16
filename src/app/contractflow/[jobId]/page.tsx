@@ -1,11 +1,65 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-helpers";
+import { type ContractDocument, documentTitle, listForJob } from "@/lib/contract-documents";
 import { findJobById, listJobContractFiles } from "@/lib/jobs";
-import { formatIsoDate, formatMoney } from "../format";
+import { STATUS_CLASS, STATUS_LABEL, formatIsoDate, formatMoney } from "../format";
 import { ContractForm } from "./contract-form";
 
 export const dynamic = "force-dynamic";
+
+function DocTable({ jobId, docs, title }: { jobId: string; docs: ContractDocument[]; title: string }) {
+  return (
+    <div className="space-y-2">
+      <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+      {docs.length === 0 ? (
+        <p className="text-sm text-slate-500">None yet.</p>
+      ) : (
+        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th className="px-3 py-2">No.</th>
+                <th className="px-3 py-2">Status</th>
+                <th className="px-3 py-2">Version</th>
+                <th className="px-3 py-2">Key date</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {docs.map((d) => (
+                <tr key={d.id} className="border-t border-slate-100">
+                  <td className="px-3 py-2 font-medium">{documentTitle(d)}</td>
+                  <td className="px-3 py-2">
+                    <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[d.status]}`}>
+                      {STATUS_LABEL[d.status]}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2">{d.currentVersion === 0 ? "—" : `V${d.currentVersion}`}</td>
+                  <td className="px-3 py-2">
+                    {d.kind === "rfi"
+                      ? formatIsoDate(d.responseRequiredBy)
+                      : d.kind === "eot"
+                        ? formatIsoDate(d.adjustedPcDate)
+                        : "—"}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <Link
+                      href={`/contractflow/${jobId}/doc/${d.id}`}
+                      className="text-blue-700 underline"
+                    >
+                      Open
+                    </Link>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default async function JobRegisterPage({
   params,
@@ -17,7 +71,11 @@ export default async function JobRegisterPage({
   const job = await findJobById(jobId);
   if (!job) notFound();
 
-  const contractFiles = await listJobContractFiles(jobId);
+  const [contractFiles, docs] = await Promise.all([
+    listJobContractFiles(jobId),
+    listForJob(jobId),
+  ]);
+  const rfis = docs.filter((d) => d.kind === "rfi");
   // Until EOTs exist (ticket 04) the adjusted Date for PC equals the contract
   // date; until variations exist (ticket 08) the current sum is the original.
   const adjustedPc = job.contractDateForPc;
@@ -48,6 +106,23 @@ export default async function JobRegisterPage({
           </p>
           <p className="mt-1 text-lg font-semibold">{formatMoney(job.contractSumCents)}</p>
         </div>
+      </section>
+
+      <section className="space-y-4">
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Register
+          </h2>
+          <div className="ml-auto flex gap-2">
+            <Link
+              href={`/contractflow/${jobId}/new/rfi`}
+              className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white"
+            >
+              New RFI
+            </Link>
+          </div>
+        </div>
+        <DocTable jobId={jobId} docs={rfis} title="Requests for Information" />
       </section>
 
       <section className="space-y-2">

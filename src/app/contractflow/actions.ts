@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { record } from "@/lib/audit";
 import { requireAdmin } from "@/lib/auth-helpers";
@@ -8,6 +9,162 @@ import { getRequestMeta } from "@/lib/request-meta";
 import { saveFile } from "@/lib/uploads";
 
 const DOC_FILE_MAX = 25 * 1024 * 1024;
+
+// RFI only until ticket 04 adds the NOD and EOT kinds.
+const KindSchema = z.enum(["rfi"]);
+
+const DraftFieldsSchema = z.object({
+  question: z.string().max(20_000).optional(),
+  responseRequiredBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+});
+
+function draftFields(formData: FormData) {
+  const obj: Record<string, unknown> = {};
+  for (const key of ["question", "responseRequiredBy"]) {
+    const v = formData.get(key);
+    if (v != null && v !== "") obj[key] = v;
+  }
+  return DraftFieldsSchema.safeParse(obj);
+}
+
+export async function createDraftAction(jobId: string, kind: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const parsedKind = KindSchema.safeParse(kind);
+  if (!parsedKind.success) return { error: "Unknown document kind." };
+  const parsed = draftFields(formData);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const f = parsed.data;
+
+  const { createDraft } = await import("@/lib/contract-documents");
+  const doc = await createDraft({
+    jobId,
+    kind: parsedKind.data,
+    createdBy: admin.id,
+    content: { question: f.question ?? "" },
+    responseRequiredBy: f.responseRequiredBy || null,
+  });
+
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "contract_doc.draft.create",
+    entity: { type: "contract_document", id: doc.id },
+    after: { jobId, kind: doc.kind },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${jobId}`);
+  redirect(`/contractflow/${jobId}/doc/${doc.id}`);
+}
+
+export async function updateDraftAction(documentId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { findById, updateDraft } = await import("@/lib/contract-documents");
+  const doc = await findById(documentId);
+  if (!doc) return { error: "Document not found." };
+  const parsed = draftFields(formData);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const f = parsed.data;
+
+  try {
+    await updateDraft(documentId, {
+      content: { question: f.question ?? "" },
+      responseRequiredBy: f.responseRequiredBy || null,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Update failed." };
+  }
+
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "contract_doc.draft.update",
+    entity: { type: "contract_document", id: documentId },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${doc.jobId}`);
+  redirect(`/contractflow/${doc.jobId}/doc/${documentId}`);
+}
+
+export async function deleteDraftAction(documentId: string) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { findById, deleteDraft } = await import("@/lib/contract-documents");
+  const doc = await findById(documentId);
+  if (!doc) return { error: "Document not found." };
+  try {
+    await deleteDraft(documentId);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Delete failed." };
+  }
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "contract_doc.draft.delete",
+    entity: { type: "contract_document", id: documentId },
+    before: { jobId: doc.jobId, kind: doc.kind },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${doc.jobId}`);
+  redirect(`/contractflow/${doc.jobId}`);
+}
+
+export async function issueAction(documentId: string) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { issue } = await import("@/lib/contract-documents");
+  const { renderContractDocPdf } = await import("@/lib/contract-docs-pdf");
+  try {
+    const doc = await issue(documentId, admin.id, (d) => renderContractDocPdf(d, admin.id));
+    await record({
+      actor: { id: admin.id, email: admin.email },
+      action: "contract_doc.issue",
+      entity: { type: "contract_document", id: documentId },
+      after: { number: doc.number, version: doc.currentVersion },
+      request: meta,
+    });
+    revalidatePath(`/contractflow/${doc.jobId}`);
+    return { ok: true as const };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Issue failed." };
+  }
+}
+
+export async function startRevisionAction(documentId: string) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { startRevision } = await import("@/lib/contract-documents");
+  try {
+    const doc = await startRevision(documentId);
+    await record({
+      actor: { id: admin.id, email: admin.email },
+      action: "contract_doc.revise",
+      entity: { type: "contract_document", id: documentId },
+      request: meta,
+    });
+    revalidatePath(`/contractflow/${doc.jobId}/doc/${documentId}`);
+    return { ok: true as const };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Revision failed." };
+  }
+}
+
+export async function withdrawAction(documentId: string) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { withdraw } = await import("@/lib/contract-documents");
+  try {
+    const doc = await withdraw(documentId);
+    await record({
+      actor: { id: admin.id, email: admin.email },
+      action: "contract_doc.withdraw",
+      entity: { type: "contract_document", id: documentId },
+      request: meta,
+    });
+    revalidatePath(`/contractflow/${doc.jobId}/doc/${documentId}`);
+    return { ok: true as const };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Withdraw failed." };
+  }
+}
 
 const JobContractSchema = z.object({
   principalName: z.string().max(200).optional().or(z.literal("")),

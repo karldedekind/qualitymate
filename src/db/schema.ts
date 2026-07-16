@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -9,6 +10,7 @@ import {
   serial,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 
 export const roleEnum = pgEnum("role", ["admin", "site_staff"]);
@@ -338,6 +340,100 @@ export const heartbeats = pgTable("heartbeats", {
   instanceId: text("instance_id").notNull(),
   payload: jsonb("payload").notNull(),
   receivedAt: timestamp("received_at").notNull().defaultNow(),
+});
+
+export const contractDocKindEnum = pgEnum("contract_doc_kind", ["rfi", "nod", "eot"]);
+
+export const contractDocStatusEnum = pgEnum("contract_doc_status", [
+  "draft",
+  "issued",
+  "answered",
+  "approved",
+  "rejected",
+  "withdrawn",
+  // NOD terminal state: the Principal's representative acknowledged the notice.
+  "acknowledged",
+]);
+
+export type ContractDocContent = {
+  /** RFI: the formal question. */
+  question?: string;
+  /** NOD: cause of delay / dates occurred / days delayed (prose, as printed). */
+  cause?: string;
+  datesOccurred?: string;
+  daysDelayed?: string;
+  /** EOT: contract-clause preamble + claim body (typed fresh per claim). */
+  clausePreamble?: string;
+  reasons?: string;
+  request?: string;
+};
+
+export const contractDocuments = pgTable(
+  "contract_documents",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "restrict" }),
+    kind: contractDocKindEnum("kind").notNull(),
+    // Allocated at first issue; null while draft. Gap-free per job+kind.
+    number: integer("number"),
+    status: contractDocStatusEnum("status").notNull().default("draft"),
+    // Version currently issued; 0 = never issued. A revision edits the draft
+    // fields then re-issues as currentVersion + 1.
+    currentVersion: integer("current_version").notNull().default(0),
+    content: jsonb("content").$type<ContractDocContent>().notNull().default({}),
+    // Register-facing typed fields (kind-specific, nullable for other kinds).
+    responseRequiredBy: date("response_required_by"),
+    daysClaimed: integer("days_claimed"),
+    pcDateSnapshot: date("pc_date_snapshot"),
+    previousEotDays: integer("previous_eot_days"),
+    adjustedPcDate: date("adjusted_pc_date"),
+    // Cross-links (the printed "RFI Reference Number" etc).
+    rfiId: text("rfi_id"),
+    nodId: text("nod_id"),
+    variationId: text("variation_id"),
+    respondedAt: timestamp("responded_at"),
+    respondedBy: text("responded_by").references(() => user.id, { onDelete: "set null" }),
+    responseNote: text("response_note"),
+    withdrawnAt: timestamp("withdrawn_at"),
+    overdueNotifiedAt: timestamp("overdue_notified_at"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("contract_documents_job_kind_number_idx")
+      .on(t.jobId, t.kind, t.number)
+      .where(sql`"number" IS NOT NULL`),
+  ],
+);
+
+export const contractDocVersions = pgTable("contract_doc_versions", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => contractDocuments.id, { onDelete: "cascade" }),
+  version: integer("version").notNull(),
+  // Full snapshot of the document fields as issued (immutable).
+  snapshot: jsonb("snapshot").notNull(),
+  pdfPath: text("pdf_path").notNull(),
+  issuedAt: timestamp("issued_at").notNull().defaultNow(),
+  issuedBy: text("issued_by").references(() => user.id, { onDelete: "set null" }),
+  supersededAt: timestamp("superseded_at"),
+});
+
+export const contractDocFiles = pgTable("contract_doc_files", {
+  id: text("id").primaryKey(),
+  documentId: text("document_id")
+    .notNull()
+    .references(() => contractDocuments.id, { onDelete: "cascade" }),
+  // 'attachment' = ours, listed on the issued PDF; 'response' = the Principal's.
+  role: text("role").notNull(),
+  path: text("path").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const setupState = pgTable("setup_state", {

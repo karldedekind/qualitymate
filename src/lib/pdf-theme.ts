@@ -162,6 +162,34 @@ export function sectionHeading(doc: PdfDoc, title: string, accent: string): void
   doc.moveDown(0.4);
 }
 
+/** Section heading for contract documents: a soft accent-wash band (flat tint —
+ * prints like ~12% opacity over white) with a solid accent edge bar and a dark
+ * uppercase label, tracking slightly for legibility. Leaves doc.y below the band. */
+export function sectionHeadingBox(doc: PdfDoc, title: string, accent: string): void {
+  const { left, width } = contentBox(doc);
+  const barW = 4;
+  const padY = 7;
+  const textX = left + barW + 12;
+  const textW = left + width - textX - 12;
+  const label = title.toUpperCase();
+  const textOpts = { width: textW, characterSpacing: 0.6 };
+
+  doc.font("Helvetica-Bold").fontSize(10.5);
+  const textH = doc.heightOfString(label, textOpts);
+  const boxH = textH + padY * 2;
+  ensureSpace(doc, boxH + 10);
+  const y = doc.y;
+
+  doc.roundedRect(left, y, width, boxH, 4).fill(tint(accent, 0.88));
+  doc.roundedRect(left, y, barW, boxH, 2).fill(accent);
+  doc
+    .fillColor(INK)
+    .font("Helvetica-Bold")
+    .fontSize(10.5)
+    .text(label, textX, y + padY + 0.5, textOpts);
+  doc.y = y + boxH + 10;
+}
+
 /** Boxed two-column label/value panel (meeting metadata, report header, …). */
 export function drawMetaPanel(doc: PdfDoc, rows: [string, string][]): void {
   const { left, width } = contentBox(doc);
@@ -171,10 +199,15 @@ export function drawMetaPanel(doc: PdfDoc, rows: [string, string][]): void {
   const valueW = width - padX * 2 - labelW;
   const lineGap = 4;
 
-  doc.font("Helvetica").fontSize(10);
   let inner = 0;
-  const heights = rows.map(([, value]) => {
-    const h = doc.heightOfString(value, { width: valueW });
+  // Row height must cover whichever wraps taller: the label (bold 9pt in the
+  // narrow column) or the value — long labels otherwise overlap the next row.
+  const heights = rows.map(([label, value]) => {
+    doc.font("Helvetica-Bold").fontSize(9);
+    const lh = doc.heightOfString(label.toUpperCase(), { width: labelW });
+    doc.font("Helvetica").fontSize(10);
+    const vh = doc.heightOfString(value, { width: valueW });
+    const h = Math.max(lh, vh);
     inner += h + lineGap;
     return h;
   });

@@ -26,6 +26,9 @@ export const KNOWN_KEYS = {
   HEARTBEAT_INCLUDE_COMPANY_NAME: "heartbeat.include_company_name",
   HEARTBEAT_LAST_AT: "heartbeat.last_at",
   HEARTBEAT_INGEST_TOKEN: "heartbeat.ingest_token",
+  CONTRACTOR_LEGAL_NAME: "contractor.legal_name",
+  CONTRACTOR_PHONE: "contractor.phone",
+  CONTRACTOR_EMAIL: "contractor.email",
 } as const;
 
 const cache = new Map<string, string | null>();
