@@ -52,7 +52,9 @@ export default async function DocDetailPage({
 
       {doc.status === "issued" && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          Awaiting a response from the Principal&apos;s representative
+          {doc.kind === "nod"
+            ? "Awaiting acknowledgement from the Principal's representative"
+            : "Awaiting a response from the Principal's representative"}
           {doc.kind === "rfi" && doc.responseRequiredBy
             ? ` (required by ${formatIsoDate(doc.responseRequiredBy)})`
             : ""}
@@ -79,6 +81,28 @@ export default async function DocDetailPage({
               <dt className="text-slate-500">Response required by</dt>
               <dd>{formatIsoDate(doc.responseRequiredBy)}</dd>
             </div>
+          )}
+          {doc.kind === "eot" && (
+            <>
+              <div>
+                <dt className="text-slate-500">
+                  Days claimed ({job.dayBasis === "ordinary" ? "ordinary days" : "working days"})
+                </dt>
+                <dd>{doc.daysClaimed ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Date for PC at claim</dt>
+                <dd>{formatIsoDate(doc.pcDateSnapshot)}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Previous EOT days</dt>
+                <dd>{doc.previousEotDays ?? "—"}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Adjusted Date for PC</dt>
+                <dd>{formatIsoDate(doc.adjustedPcDate)}</dd>
+              </div>
+            </>
           )}
         </dl>
       </section>

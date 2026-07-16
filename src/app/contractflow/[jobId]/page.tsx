@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { type ContractDocument, documentTitle, listForJob } from "@/lib/contract-documents";
+import {
+  type ContractDocument,
+  currentAdjustedPcDate,
+  documentTitle,
+  listForJob,
+} from "@/lib/contract-documents";
 import { findJobById, listJobContractFiles } from "@/lib/jobs";
 import { STATUS_CLASS, STATUS_LABEL, formatIsoDate, formatMoney } from "../format";
 import { ContractForm } from "./contract-form";
@@ -71,14 +76,14 @@ export default async function JobRegisterPage({
   const job = await findJobById(jobId);
   if (!job) notFound();
 
-  const [contractFiles, docs] = await Promise.all([
+  const [contractFiles, docs, adjustedPc] = await Promise.all([
     listJobContractFiles(jobId),
     listForJob(jobId),
+    currentAdjustedPcDate(jobId),
   ]);
   const rfis = docs.filter((d) => d.kind === "rfi");
-  // Until EOTs exist (ticket 04) the adjusted Date for PC equals the contract
-  // date; until variations exist (ticket 08) the current sum is the original.
-  const adjustedPc = job.contractDateForPc;
+  const nods = docs.filter((d) => d.kind === "nod");
+  const eots = docs.filter((d) => d.kind === "eot");
 
   return (
     <div className="space-y-8">
@@ -114,15 +119,20 @@ export default async function JobRegisterPage({
             Register
           </h2>
           <div className="ml-auto flex gap-2">
-            <Link
-              href={`/contractflow/${jobId}/new/rfi`}
-              className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white"
-            >
-              New RFI
-            </Link>
+            {(["rfi", "nod", "eot"] as const).map((k) => (
+              <Link
+                key={k}
+                href={`/contractflow/${jobId}/new/${k}`}
+                className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white"
+              >
+                New {k.toUpperCase()}
+              </Link>
+            ))}
           </div>
         </div>
         <DocTable jobId={jobId} docs={rfis} title="Requests for Information" />
+        <DocTable jobId={jobId} docs={nods} title="Notices of Delay" />
+        <DocTable jobId={jobId} docs={eots} title="Extensions of Time" />
       </section>
 
       <section className="space-y-2">

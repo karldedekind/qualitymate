@@ -5,8 +5,10 @@ import {
   type ContractDocContent,
   contractDocVersions,
   contractDocuments,
+  jobs,
 } from "@/db/schema";
 import { saveBytes } from "@/lib/uploads";
+import { addOrdinaryDays, addWorkingDays } from "@/lib/working-days";
 
 export type ContractDocument = typeof contractDocuments.$inferSelect;
 export type ContractDocVersion = typeof contractDocVersions.$inferSelect;
@@ -155,6 +157,21 @@ export async function issue(
     // Serialize number allocation per job.
     await tx.execute(sql`SELECT "id" FROM "jobs" WHERE "id" = ${doc.jobId} FOR UPDATE`);
 
+    // An EOT's base figures are computed at draft time; refuse to issue if
+    // another approved EOT has since made them stale — the printed claim
+    // would misstate "previous claims". Editing the draft refreshes them.
+    if (doc.kind === "eot" && doc.daysClaimed != null && doc.pcDateSnapshot != null) {
+      const fresh = await computeEotDefaults(doc.jobId, doc.daysClaimed);
+      if (
+        fresh.previousEotDays !== (doc.previousEotDays ?? 0) ||
+        fresh.pcDateSnapshot !== doc.pcDateSnapshot
+      ) {
+        throw new Error(
+          "This EOT's base figures are out of date (another EOT was approved since drafting). Edit and re-save the draft to refresh them, then issue.",
+        );
+      }
+    }
+
     let number = doc.number;
     if (number == null) {
       const res = await tx.execute<{ next: number }>(
@@ -254,6 +271,79 @@ export async function listVersions(documentId: string): Promise<ContractDocVersi
     .from(contractDocVersions)
     .where(eq(contractDocVersions.documentId, documentId))
     .orderBy(asc(contractDocVersions.version));
+}
+
+export type EotDefaults = {
+  pcDateSnapshot: string;
+  previousEotDays: number;
+  adjustedPcDate: string;
+};
+
+/** Approved EOTs for a job: total days granted + the latest adjusted date. */
+async function approvedEotSummary(
+  jobId: string,
+): Promise<{ totalDays: number; latestAdjustedDate: string | null }> {
+  const approved = await db
+    .select({
+      daysClaimed: contractDocuments.daysClaimed,
+      adjustedPcDate: contractDocuments.adjustedPcDate,
+    })
+    .from(contractDocuments)
+    .where(
+      and(
+        eq(contractDocuments.jobId, jobId),
+        eq(contractDocuments.kind, "eot"),
+        eq(contractDocuments.status, "approved"),
+      ),
+    );
+  return {
+    totalDays: approved.reduce((sum, r) => sum + (r.daysClaimed ?? 0), 0),
+    latestAdjustedDate:
+      approved
+        .map((r) => r.adjustedPcDate)
+        .filter((d): d is string => d != null)
+        .sort()
+        .at(-1) ?? null,
+  };
+}
+
+/**
+ * Defaults for a new EOT claim: base date is the latest approved EOT's
+ * adjusted date (or the contract Date for PC), previous days is the sum of
+ * approved claims. The caller may override the computed adjusted date.
+ */
+export async function computeEotDefaults(
+  jobId: string,
+  daysClaimed: number,
+): Promise<EotDefaults> {
+  const jobRows = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  const job = jobRows[0];
+  if (!job) throw new Error("Job not found.");
+  if (!job.contractDateForPc) {
+    throw new Error("Job has no contract Date for Practical Completion set.");
+  }
+  const { totalDays, latestAdjustedDate } = await approvedEotSummary(jobId);
+  const base = latestAdjustedDate ?? job.contractDateForPc;
+  // The job's contract sets the day basis; working days (QLD) is the default
+  // when the contract details don't say.
+  const adjustedPcDate =
+    job.dayBasis === "ordinary"
+      ? addOrdinaryDays(base, daysClaimed)
+      : addWorkingDays(base, daysClaimed);
+  return {
+    pcDateSnapshot: job.contractDateForPc,
+    previousEotDays: totalDays,
+    adjustedPcDate,
+  };
+}
+
+/** The job's current contractual completion date (approved EOTs applied). */
+export async function currentAdjustedPcDate(jobId: string): Promise<string | null> {
+  const jobRows = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+  const job = jobRows[0];
+  if (!job) return null;
+  const { latestAdjustedDate } = await approvedEotSummary(jobId);
+  return latestAdjustedDate ?? job.contractDateForPc;
 }
 
 export async function listForJob(jobId: string): Promise<ContractDocument[]> {

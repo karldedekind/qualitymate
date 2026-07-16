@@ -10,20 +10,54 @@ import { saveFile } from "@/lib/uploads";
 
 const DOC_FILE_MAX = 25 * 1024 * 1024;
 
-// RFI only until ticket 04 adds the NOD and EOT kinds.
-const KindSchema = z.enum(["rfi"]);
+const KindSchema = z.enum(["rfi", "nod", "eot"]);
 
 const DraftFieldsSchema = z.object({
   question: z.string().max(20_000).optional(),
+  cause: z.string().max(20_000).optional(),
+  datesOccurred: z.string().max(20_000).optional(),
+  daysDelayed: z.string().max(2_000).optional(),
+  clausePreamble: z.string().max(20_000).optional(),
+  reasons: z.string().max(20_000).optional(),
+  request: z.string().max(20_000).optional(),
   responseRequiredBy: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  daysClaimed: z.coerce.number().int().min(0).optional(),
+  adjustedPcDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
+  rfiId: z.string().optional().or(z.literal("")),
+  nodId: z.string().optional().or(z.literal("")),
 });
+
+function contentFrom(kind: z.infer<typeof KindSchema>, f: z.infer<typeof DraftFieldsSchema>) {
+  if (kind === "rfi") return { question: f.question ?? "" };
+  if (kind === "nod")
+    return { cause: f.cause ?? "", datesOccurred: f.datesOccurred ?? "", daysDelayed: f.daysDelayed ?? "" };
+  return { clausePreamble: f.clausePreamble ?? "", reasons: f.reasons ?? "", request: f.request ?? "" };
+}
+
+/**
+ * EOT base figures: computed from the job's approved EOTs when days are
+ * claimed; a manually-entered adjusted date always wins (override).
+ */
+async function eotFields(jobId: string, f: z.infer<typeof DraftFieldsSchema>) {
+  if (f.daysClaimed == null) {
+    return { adjustedPcDate: f.adjustedPcDate || null };
+  }
+  const { computeEotDefaults } = await import("@/lib/contract-documents");
+  const defaults = await computeEotDefaults(jobId, f.daysClaimed);
+  return f.adjustedPcDate ? { ...defaults, adjustedPcDate: f.adjustedPcDate } : defaults;
+}
 
 function draftFields(formData: FormData) {
   const obj: Record<string, unknown> = {};
-  for (const key of ["question", "responseRequiredBy"]) {
+  for (const key of [
+    "question", "cause", "datesOccurred", "daysDelayed", "clausePreamble", "reasons",
+    "request", "responseRequiredBy", "adjustedPcDate", "rfiId", "nodId",
+  ]) {
     const v = formData.get(key);
     if (v != null && v !== "") obj[key] = v;
   }
+  const days = formData.get("daysClaimed");
+  if (days != null && days !== "") obj.daysClaimed = days;
   return DraftFieldsSchema.safeParse(obj);
 }
 
@@ -36,13 +70,26 @@ export async function createDraftAction(jobId: string, kind: string, formData: F
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   const f = parsed.data;
 
+  let eotDefaults: Partial<Awaited<ReturnType<typeof eotFields>>> = {};
+  if (parsedKind.data === "eot") {
+    try {
+      eotDefaults = await eotFields(jobId, f);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Could not compute EOT dates." };
+    }
+  }
+
   const { createDraft } = await import("@/lib/contract-documents");
   const doc = await createDraft({
     jobId,
     kind: parsedKind.data,
     createdBy: admin.id,
-    content: { question: f.question ?? "" },
+    content: contentFrom(parsedKind.data, f),
     responseRequiredBy: f.responseRequiredBy || null,
+    daysClaimed: f.daysClaimed ?? null,
+    rfiId: f.rfiId || null,
+    nodId: f.nodId || null,
+    ...eotDefaults,
   });
 
   await record({
@@ -66,10 +113,23 @@ export async function updateDraftAction(documentId: string, formData: FormData) 
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   const f = parsed.data;
 
+  let eotPatch: Partial<Awaited<ReturnType<typeof eotFields>>> = {};
+  if (doc.kind === "eot") {
+    try {
+      eotPatch = await eotFields(doc.jobId, f);
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Could not compute EOT dates." };
+    }
+  }
+
   try {
     await updateDraft(documentId, {
-      content: { question: f.question ?? "" },
+      content: contentFrom(doc.kind, f),
       responseRequiredBy: f.responseRequiredBy || null,
+      daysClaimed: f.daysClaimed ?? null,
+      rfiId: f.rfiId || null,
+      nodId: f.nodId || null,
+      ...eotPatch,
     });
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Update failed." };

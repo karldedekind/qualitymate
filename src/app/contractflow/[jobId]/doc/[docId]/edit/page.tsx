@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { documentTitle, findById } from "@/lib/contract-documents";
+import { documentTitle, findById, listForJob } from "@/lib/contract-documents";
 import { findJobById } from "@/lib/jobs";
 import { DocForm } from "../../../doc-form";
 
@@ -17,8 +17,9 @@ export default async function EditDocPage({
   const [job, doc] = await Promise.all([findJobById(jobId), findById(docId)]);
   if (!job || !doc || doc.jobId !== jobId) notFound();
   if (doc.status !== "draft") redirect(`/contractflow/${jobId}/doc/${docId}`);
-  // RFI only until ticket 04 adds the NOD and EOT kinds.
-  if (doc.kind !== "rfi") notFound();
+
+  const docs = await listForJob(jobId);
+  const issued = docs.filter((d) => d.number != null && d.id !== docId);
 
   return (
     <div className="mx-auto max-w-3xl space-y-4">
@@ -33,10 +34,17 @@ export default async function EditDocPage({
         documentId={docId}
         jobId={jobId}
         kind={doc.kind}
+        dayBasis={job.dayBasis}
         initial={{
           content: doc.content,
           responseRequiredBy: doc.responseRequiredBy,
+          daysClaimed: doc.daysClaimed,
+          adjustedPcDate: doc.adjustedPcDate,
+          rfiId: doc.rfiId,
+          nodId: doc.nodId,
         }}
+        rfiOptions={issued.filter((d) => d.kind === "rfi").map((d) => ({ id: d.id, label: documentTitle(d) }))}
+        nodOptions={issued.filter((d) => d.kind === "nod").map((d) => ({ id: d.id, label: documentTitle(d) }))}
       />
     </div>
   );

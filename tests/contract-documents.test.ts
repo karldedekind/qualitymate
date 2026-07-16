@@ -212,6 +212,141 @@ describe("withdraw", () => {
   });
 });
 
+// recordResponse arrives with ticket 06; until then decide an EOT directly.
+async function decideEot(id: string, status: "approved" | "rejected") {
+  const { db } = await import("@/db");
+  const { contractDocuments } = await import("@/db/schema");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(contractDocuments)
+    .set({ status, respondedAt: new Date() })
+    .where(eq(contractDocuments.id, id));
+}
+
+describe("EOT arithmetic", () => {
+  it("computeEotDefaults chains off approved EOTs", async () => {
+    const { createDraft, issue, computeEotDefaults } = await import("@/lib/contract-documents");
+    const { job, user } = await createJob();
+
+    const first = await computeEotDefaults(job.id, 48);
+    expect(first.pcDateSnapshot).toBe("2026-07-23");
+    expect(first.previousEotDays).toBe(0);
+    expect(first.adjustedPcDate).toBe("2026-09-29"); // real EOT 01 numbers
+
+    const eot = await createDraft({
+      jobId: job.id,
+      kind: "eot",
+      createdBy: user.id,
+      content: {},
+      daysClaimed: 48,
+      ...first,
+    });
+    await issue(eot.id, user.id, renderFake);
+    await decideEot(eot.id, "approved");
+
+    const second = await computeEotDefaults(job.id, 10);
+    expect(second.previousEotDays).toBe(48);
+    // base moves to the approved adjusted date
+    const { addWorkingDays } = await import("@/lib/working-days");
+    expect(second.adjustedPcDate).toBe(addWorkingDays("2026-09-29", 10));
+  });
+
+  it("rejected EOTs do not move the adjusted date", async () => {
+    const { createDraft, issue, computeEotDefaults } = await import("@/lib/contract-documents");
+    const { job, user } = await createJob();
+    const eot = await createDraft({
+      jobId: job.id,
+      kind: "eot",
+      createdBy: user.id,
+      content: {},
+      daysClaimed: 48,
+      pcDateSnapshot: "2026-07-23",
+      previousEotDays: 0,
+      adjustedPcDate: "2026-09-29",
+    });
+    await issue(eot.id, user.id, renderFake);
+    await decideEot(eot.id, "rejected");
+
+    const next = await computeEotDefaults(job.id, 5);
+    expect(next.previousEotDays).toBe(0);
+    expect(next.pcDateSnapshot).toBe("2026-07-23");
+  });
+
+  it("ordinary day basis counts calendar days", async () => {
+    const { computeEotDefaults } = await import("@/lib/contract-documents");
+    const { db } = await import("@/db");
+    const { jobs } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { job } = await createJob();
+    await db.update(jobs).set({ dayBasis: "ordinary" }).where(eq(jobs.id, job.id));
+
+    const d = await computeEotDefaults(job.id, 10);
+    expect(d.adjustedPcDate).toBe("2026-08-02"); // 2026-07-23 + 10 calendar days
+  });
+
+  it("currentAdjustedPcDate reflects the latest approved EOT", async () => {
+    const { createDraft, issue, currentAdjustedPcDate } = await import(
+      "@/lib/contract-documents"
+    );
+    const { job, user } = await createJob();
+    expect(await currentAdjustedPcDate(job.id)).toBe("2026-07-23");
+
+    const eot = await createDraft({
+      jobId: job.id,
+      kind: "eot",
+      createdBy: user.id,
+      content: {},
+      daysClaimed: 48,
+      pcDateSnapshot: "2026-07-23",
+      previousEotDays: 0,
+      adjustedPcDate: "2026-09-29",
+    });
+    await issue(eot.id, user.id, renderFake);
+    await decideEot(eot.id, "approved");
+    expect(await currentAdjustedPcDate(job.id)).toBe("2026-09-29");
+  });
+
+  it("issue refuses an EOT whose base figures went stale; re-saving refreshes", async () => {
+    const { createDraft, issue, updateDraft, computeEotDefaults, findById } = await import(
+      "@/lib/contract-documents"
+    );
+    const { job, user } = await createJob();
+
+    const defaultsA = await computeEotDefaults(job.id, 48);
+    const a = await createDraft({
+      jobId: job.id,
+      kind: "eot",
+      createdBy: user.id,
+      content: {},
+      daysClaimed: 48,
+      ...defaultsA,
+    });
+    const defaultsB = await computeEotDefaults(job.id, 10);
+    const b = await createDraft({
+      jobId: job.id,
+      kind: "eot",
+      createdBy: user.id,
+      content: {},
+      daysClaimed: 10,
+      ...defaultsB,
+    });
+
+    await issue(a.id, user.id, renderFake);
+    await decideEot(a.id, "approved");
+
+    // B's figures still say "no previous claims" — refuse to print them.
+    await expect(issue(b.id, user.id, renderFake)).rejects.toThrow(/out of date/i);
+
+    // Editing the draft recomputes the figures; issue then succeeds.
+    const fresh = await computeEotDefaults(job.id, 10);
+    expect(fresh.previousEotDays).toBe(48);
+    await updateDraft(b.id, { ...fresh });
+    const issued = await issue(b.id, user.id, renderFake);
+    expect(issued.status).toBe("issued");
+    expect((await findById(b.id))?.previousEotDays).toBe(48);
+  });
+});
+
 describe("register queries", () => {
   it("listForJob groups by kind, ordered by number", async () => {
     const { createDraft, issue, listForJob } = await import("@/lib/contract-documents");
