@@ -157,6 +157,8 @@ async function AdminDashboard() {
     <div className="space-y-6">
       <QuickOps counts={opsCounts} />
 
+      <ContractFlowCard />
+
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 pt-2">
         Reports
       </h2>
@@ -194,6 +196,30 @@ async function AdminDashboard() {
         </Link>
       </div>
     </div>
+  );
+}
+
+function ContractFlowCard() {
+  return (
+    <Link
+      href="/contractflow"
+      className="group flex items-center justify-between gap-4 rounded-lg bg-indigo-950 px-5 py-4 shadow-sm hover:bg-indigo-900 transition-colors"
+    >
+      <div className="min-w-0">
+        <div className="flex items-center gap-2.5">
+          <span className="text-base font-semibold text-white">ContractFlow</span>
+          <span className="rounded-full border border-indigo-400/60 bg-indigo-900 px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide text-indigo-200">
+            Separate module
+          </span>
+        </div>
+        <p className="mt-0.5 text-sm text-indigo-200">
+          Contract administration — RFIs, notices, EOTs, variations and PM communications.
+        </p>
+      </div>
+      <span className="shrink-0 text-indigo-300 group-hover:text-white transition-colors">
+        Open →
+      </span>
+    </Link>
   );
 }
 
