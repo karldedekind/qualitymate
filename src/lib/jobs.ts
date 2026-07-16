@@ -1,9 +1,11 @@
 import { randomBytes } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { jobs } from "@/db/schema";
+import { jobContractFiles, jobs } from "@/db/schema";
 
 export type Job = typeof jobs.$inferSelect;
+export type JobContractFile = typeof jobContractFiles.$inferSelect;
+export type JobContractFileKind = JobContractFile["kind"];
 
 function newId(): string {
   return randomBytes(12).toString("base64url");
@@ -63,6 +65,48 @@ export async function updateJob(id: string, input: UpdateJobInput): Promise<Job 
   if (input.active !== undefined) patch.active = input.active;
   const [row] = await db.update(jobs).set(patch).where(eq(jobs.id, id)).returning();
   return row ?? null;
+}
+
+export type JobContractInput = {
+  principalName: string | null;
+  principalTradingAs: string | null;
+  principalRepName: string | null;
+  principalRepPhone: string | null;
+  principalRepEmail: string | null;
+  contractDateForPc: string | null;
+  contractSumCents: number | null;
+  dayBasis: "ordinary" | "working" | null;
+};
+
+export async function updateJobContract(id: string, input: JobContractInput): Promise<Job | null> {
+  const [row] = await db
+    .update(jobs)
+    .set({ ...input, updatedAt: new Date() })
+    .where(eq(jobs.id, id))
+    .returning();
+  return row ?? null;
+}
+
+export async function listJobContractFiles(jobId: string): Promise<JobContractFile[]> {
+  return db
+    .select()
+    .from(jobContractFiles)
+    .where(eq(jobContractFiles.jobId, jobId))
+    .orderBy(asc(jobContractFiles.createdAt));
+}
+
+export async function addJobContractFile(input: {
+  jobId: string;
+  kind: JobContractFileKind;
+  path: string;
+  originalFilename: string;
+  uploadedBy: string;
+}): Promise<JobContractFile> {
+  const [row] = await db
+    .insert(jobContractFiles)
+    .values({ id: newId(), ...input })
+    .returning();
+  return row;
 }
 
 export async function deactivateJob(id: string): Promise<void> {

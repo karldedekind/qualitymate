@@ -1,4 +1,5 @@
 import {
+  bigint,
   boolean,
   date,
   integer,
@@ -136,9 +137,32 @@ export const jobs = pgTable("jobs", {
   name: text("name").notNull(),
   address: text("address"),
   active: boolean("active").notNull().default(true),
+  principalName: text("principal_name"),
+  principalTradingAs: text("principal_trading_as"),
+  principalRepName: text("principal_rep_name"),
+  principalRepPhone: text("principal_rep_phone"),
+  principalRepEmail: text("principal_rep_email"),
+  contractDateForPc: date("contract_date_for_pc"),
+  contractSumCents: bigint("contract_sum_cents", { mode: "number" }),
+  // Whether contract durations count ordinary (calendar) or working days.
+  dayBasis: text("day_basis", { enum: ["ordinary", "working"] }),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+});
+
+// Contract source documents uploaded against a job: Letter of Acceptance,
+// Purchase Order, Principal's rep appointment. Used to AI-populate contract details.
+export const jobContractFiles = pgTable("job_contract_files", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "restrict" }),
+  kind: text("kind", { enum: ["loa", "po", "sr_rep", "conditions"] }).notNull(),
+  path: text("path").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const categories = pgTable("categories", {
