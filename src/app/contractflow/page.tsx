@@ -36,6 +36,23 @@ export default async function ContractFlowOverviewPage() {
           )}
         </ul>
       </section>
+
+      <section className="border-t border-slate-200 pt-6">
+        <Link
+          href="/contractflow/signature"
+          className="group flex items-center justify-between gap-4 rounded-lg border border-indigo-200 bg-indigo-50 px-5 py-4 hover:bg-indigo-100 hover:border-indigo-300 transition-colors"
+        >
+          <div>
+            <div className="font-semibold text-indigo-900">My signature</div>
+            <p className="mt-0.5 text-sm text-indigo-700">
+              Upload or update the signature applied to issued documents.
+            </p>
+          </div>
+          <span className="shrink-0 text-indigo-500 group-hover:text-indigo-800 transition-colors">
+            Manage →
+          </span>
+        </Link>
+      </section>
     </div>
   );
 }

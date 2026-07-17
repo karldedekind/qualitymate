@@ -21,10 +21,12 @@ export function DocActions({ documentId, jobId, kind, status }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function run(fn: () => Promise<{ error?: string } | { ok: true } | void>) {
     setPending(true);
     setError(null);
+    setNotice(null);
     const result = await fn();
     setPending(false);
     if (result && "error" in result && result.error) {
@@ -39,7 +41,23 @@ export function DocActions({ documentId, jobId, kind, status }: Props) {
     if (!confirm("Issue this document? Content is locked and the number allocated permanently.")) {
       return;
     }
-    await run(() => issueAction(documentId));
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    const result = await issueAction(documentId);
+    setPending(false);
+    if ("error" in result && result.error) {
+      setError(result.error);
+      return;
+    }
+    if ("emailSent" in result) {
+      setNotice(
+        result.emailSent
+          ? "Issued and emailed to the Principal's representative."
+          : `Issued. Email not sent: ${result.emailError} Download the PDF below and send it manually.`,
+      );
+    }
+    router.refresh();
   }
 
   const btn =
@@ -118,6 +136,7 @@ export function DocActions({ documentId, jobId, kind, status }: Props) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {notice && <p className="text-sm text-green-700">{notice}</p>}
     </div>
   );
 }

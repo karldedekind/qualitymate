@@ -13,6 +13,7 @@ export type SessionUser = {
   mustChangePassword: boolean;
   deactivated: boolean;
   totpEnabled: boolean;
+  signaturePath: string | null;
   sessionId: string;
   mfaVerifiedAt: Date | null;
 };
@@ -41,6 +42,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     mustChangePassword: u.mustChangePassword,
     deactivated: u.deactivatedAt != null,
     totpEnabled: u.totpEnabledAt != null,
+    signaturePath: u.signaturePath,
     sessionId,
     mfaVerifiedAt: sRows[0]?.mfaVerifiedAt ?? null,
   };

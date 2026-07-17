@@ -42,6 +42,7 @@ export const user = pgTable("user", {
   totpSecret: text("totp_secret"),
   totpEnabledAt: timestamp("totp_enabled_at"),
   totpRecoveryCodes: jsonb("totp_recovery_codes").$type<string[]>().notNull().default([]),
+  signaturePath: text("signature_path"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

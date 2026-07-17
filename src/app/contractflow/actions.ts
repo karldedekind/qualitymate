@@ -170,19 +170,27 @@ export async function deleteDraftAction(documentId: string) {
 export async function issueAction(documentId: string) {
   const admin = await requireAdmin();
   const meta = await getRequestMeta();
-  const { issue } = await import("@/lib/contract-documents");
-  const { renderContractDocPdf } = await import("@/lib/contract-docs-pdf");
+  const { issueAndDistribute } = await import("@/lib/contract-issue");
   try {
-    const doc = await issue(documentId, admin.id, (d) => renderContractDocPdf(d, admin.id));
+    const outcome = await issueAndDistribute(documentId, admin.id);
     await record({
       actor: { id: admin.id, email: admin.email },
       action: "contract_doc.issue",
       entity: { type: "contract_document", id: documentId },
-      after: { number: doc.number, version: doc.currentVersion },
+      after: {
+        number: outcome.doc.number,
+        version: outcome.doc.currentVersion,
+        emailSent: outcome.emailSent,
+        emailError: outcome.emailError,
+      },
       request: meta,
     });
-    revalidatePath(`/contractflow/${doc.jobId}`);
-    return { ok: true as const };
+    revalidatePath(`/contractflow/${outcome.doc.jobId}`);
+    return {
+      ok: true as const,
+      emailSent: outcome.emailSent,
+      emailError: outcome.emailError,
+    };
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Issue failed." };
   }
@@ -311,5 +319,27 @@ export async function uploadJobContractFileAction(jobId: string, formData: FormD
     return { error: err instanceof Error ? err.message : "Upload failed." };
   }
   revalidatePath(`/contractflow/${jobId}`);
+  return { ok: true as const };
+}
+
+// --- Signature ---
+
+export async function saveSignatureAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const dataUrl = String(formData.get("signature") ?? "");
+  const { saveUserSignature } = await import("@/lib/contract-issue");
+  try {
+    await saveUserSignature(admin.id, dataUrl);
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Saving signature failed." };
+  }
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "user.signature.update",
+    entity: { type: "user", id: admin.id },
+    request: meta,
+  });
+  revalidatePath("/contractflow/signature");
   return { ok: true as const };
 }

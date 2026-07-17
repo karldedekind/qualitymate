@@ -1,3 +1,5 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
 import { contractDocuments, jobs, user } from "@/db/schema";
@@ -17,6 +19,7 @@ import {
   sectionHeadingBox,
 } from "@/lib/pdf-theme";
 import { KNOWN_KEYS, getMany } from "@/lib/settings";
+import { uploadsRoot } from "@/lib/uploads";
 
 const DOC_TITLE: Record<ContractDocument["kind"], string> = {
   rfi: "Request for Information",
@@ -60,11 +63,17 @@ function fieldBlock(doc: PdfDoc, label: string, value: string, minHeight = 48): 
   doc.moveDown(0.8);
 }
 
+function signatureImagePath(relPath: string | null): string | null {
+  if (!relPath || !/\.(png|jpe?g)$/i.test(relPath)) return null;
+  const full = join(uploadsRoot(), relPath);
+  return existsSync(full) ? full : null;
+}
+
 function signatureBlock(
   doc: PdfDoc,
   accent: string,
   party: string,
-  signer: { name: string; date: Date } | null,
+  signer: { name: string; signaturePath: string | null; date: Date } | null,
 ): void {
   const { left, width } = contentBox(doc);
   ensureSpace(doc, 110);
@@ -84,7 +93,18 @@ function signatureBlock(
     .font("Helvetica-Bold")
     .fontSize(10)
     .text(signer.name, left, doc.y, { width });
-  doc.moveDown(0.5);
+  const sig = signatureImagePath(signer.signaturePath);
+  if (sig) {
+    const y = doc.y + 4;
+    try {
+      doc.image(sig, left, y, { fit: [160, 50] });
+      doc.y = y + 54;
+    } catch {
+      doc.moveDown(0.5);
+    }
+  } else {
+    doc.moveDown(0.5);
+  }
   doc
     .fillColor(MUTED)
     .font("Helvetica")
@@ -274,6 +294,7 @@ export async function renderContractDocPdf(
 
   signatureBlock(doc, accent, "CONTRACTOR", {
     name: issuer?.name ?? "—",
+    signaturePath: issuer?.signaturePath ?? null,
     date: new Date(),
   });
   if (docRow.kind === "eot") {
