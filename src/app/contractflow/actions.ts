@@ -9,6 +9,7 @@ import { getRequestMeta } from "@/lib/request-meta";
 import { saveFile } from "@/lib/uploads";
 
 const DOC_FILE_MAX = 25 * 1024 * 1024;
+const DOC_FILE_EXT = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp", ".eml", ".msg", ".xlsx", ".docx"]);
 
 const KindSchema = z.enum(["rfi", "nod", "eot"]);
 
@@ -213,6 +214,59 @@ export async function startRevisionAction(documentId: string) {
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Revision failed." };
   }
+}
+
+const ResponseSchema = z.object({
+  status: z.enum(["answered", "approved", "rejected", "acknowledged"]),
+  note: z.string().max(2000).optional().or(z.literal("")),
+});
+
+export async function recordResponseAction(documentId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const parsed = ResponseSchema.safeParse({
+    status: formData.get("status"),
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const { recordResponse, addDocFile, findById } = await import("@/lib/contract-documents");
+  const doc = await findById(documentId);
+  if (!doc) return { error: "Document not found." };
+
+  const file = formData.get("file");
+  try {
+    if (file instanceof File && file.size > 0) {
+      const saved = await saveFile(`contract-files/${documentId}`, file, {
+        allowedExt: DOC_FILE_EXT,
+        maxBytes: DOC_FILE_MAX,
+      });
+      await addDocFile({
+        documentId,
+        role: "response",
+        path: saved.path,
+        originalFilename: saved.originalFilename,
+        uploadedBy: admin.id,
+      });
+    }
+    await recordResponse(documentId, {
+      status: parsed.data.status,
+      respondedBy: admin.id,
+      note: parsed.data.note || null,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Recording response failed." };
+  }
+
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "contract_doc.response",
+    entity: { type: "contract_document", id: documentId },
+    after: { status: parsed.data.status },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${doc.jobId}/doc/${documentId}`);
+  return { ok: true as const };
 }
 
 export async function withdrawAction(documentId: string) {

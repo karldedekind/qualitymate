@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-helpers";
-import { documentTitle, findById, listVersions } from "@/lib/contract-documents";
+import {
+  documentTitle,
+  findById,
+  listDocFiles,
+  listVersions,
+} from "@/lib/contract-documents";
 import { findJobById } from "@/lib/jobs";
 import { STATUS_CLASS, STATUS_LABEL, formatIsoDate } from "../../../format";
 import { DocActions } from "./doc-actions";
@@ -20,15 +25,18 @@ const CONTENT_LABELS: Record<string, string> = {
 
 export default async function DocDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ jobId: string; docId: string }>;
+  searchParams: Promise<{ respond?: string }>;
 }) {
   await requireAdmin();
-  const { jobId, docId } = await params;
+  const [{ jobId, docId }, { respond }] = await Promise.all([params, searchParams]);
   const [job, doc] = await Promise.all([findJobById(jobId), findById(docId)]);
   if (!job || !doc || doc.jobId !== jobId) notFound();
 
-  const versions = await listVersions(docId);
+  const [versions, files] = await Promise.all([listVersions(docId), listDocFiles(docId)]);
+  const responses = files.filter((f) => f.role === "response");
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -52,17 +60,25 @@ export default async function DocDetailPage({
 
       {doc.status === "issued" && (
         <div className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          {doc.kind === "nod"
-            ? "Awaiting acknowledgement from the Principal's representative"
-            : "Awaiting a response from the Principal's representative"}
+          Awaiting {doc.kind === "nod" ? "acknowledgement" : "a response"} from the
+          Principal&apos;s representative
           {doc.kind === "rfi" && doc.responseRequiredBy
             ? ` (required by ${formatIsoDate(doc.responseRequiredBy)})`
             : ""}
-          .
+          . Use <span className="font-medium">
+            {doc.kind === "nod" ? "Record acknowledgement" : "Record response"}
+          </span>{" "}
+          below once it arrives.
         </div>
       )}
 
-      <DocActions documentId={docId} jobId={jobId} kind={doc.kind} status={doc.status} />
+      <DocActions
+        documentId={docId}
+        jobId={jobId}
+        kind={doc.kind}
+        status={doc.status}
+        initialShowResponse={respond === "1"}
+      />
 
       <section className="space-y-3 rounded-lg border border-slate-200 bg-white p-4">
         {Object.entries(doc.content)
@@ -104,8 +120,42 @@ export default async function DocDetailPage({
               </div>
             </>
           )}
+          {doc.respondedAt && (
+            <div>
+              <dt className="text-slate-500">
+                {doc.kind === "nod" ? "Acknowledged" : "Response recorded"}
+              </dt>
+              <dd>{doc.respondedAt.toLocaleDateString("en-AU")}</dd>
+            </div>
+          )}
+          {doc.responseNote && (
+            <div className="sm:col-span-2">
+              <dt className="text-slate-500">Response note</dt>
+              <dd>{doc.responseNote}</dd>
+            </div>
+          )}
         </dl>
       </section>
+
+      {responses.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Principal&apos;s response
+          </h2>
+          <ul className="divide-y divide-green-100 rounded-lg border border-green-200 bg-green-50 text-sm">
+            {responses.map((f) => (
+              <li key={f.id} className="flex items-center gap-2 px-4 py-2">
+                <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-800">
+                  Response
+                </span>
+                <a href={`/contractflow/file/${f.path}`} className="text-blue-700 underline">
+                  {f.originalFilename}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Versions</h2>

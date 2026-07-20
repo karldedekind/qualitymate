@@ -13,6 +13,16 @@ import { ContractForm } from "./contract-form";
 
 export const dynamic = "force-dynamic";
 
+function isOverdue(d: ContractDocument): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    d.kind === "rfi" &&
+    d.status === "issued" &&
+    d.responseRequiredBy != null &&
+    d.responseRequiredBy < today
+  );
+}
+
 function DocTable({ jobId, docs, title }: { jobId: string; docs: ContractDocument[]; title: string }) {
   return (
     <div className="space-y-2">
@@ -39,6 +49,11 @@ function DocTable({ jobId, docs, title }: { jobId: string; docs: ContractDocumen
                     <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[d.status]}`}>
                       {STATUS_LABEL[d.status]}
                     </span>
+                    {isOverdue(d) && (
+                      <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs text-red-800">
+                        Overdue
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2">{d.currentVersion === 0 ? "—" : `V${d.currentVersion}`}</td>
                   <td className="px-3 py-2">

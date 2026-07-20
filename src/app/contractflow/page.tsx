@@ -1,16 +1,88 @@
 import Link from "next/link";
 import { requireAdmin } from "@/lib/auth-helpers";
+import { documentTitle, listOpenAcrossJobs } from "@/lib/contract-documents";
 import { listJobs } from "@/lib/jobs";
+import { STATUS_CLASS, STATUS_LABEL, formatIsoDate } from "./format";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContractFlowOverviewPage() {
   await requireAdmin();
-  const jobs = await listJobs({ activeOnly: true });
+  const [open, jobs] = await Promise.all([listOpenAcrossJobs(), listJobs({ activeOnly: true })]);
+  const overdue = open.filter((d) => d.overdue);
 
   return (
     <div className="space-y-8">
       <h1 className="text-xl font-semibold">ContractFlow</h1>
+
+      {overdue.length > 0 && (
+        <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+          {overdue.length} RFI{overdue.length === 1 ? "" : "s"} overdue for a response.
+        </div>
+      )}
+
+      <section className="space-y-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Awaiting response
+        </h2>
+        <p className="text-sm text-slate-600">
+          Issued documents waiting on the Principal&apos;s representative. When the response
+          arrives, record it to move the document to its final state.
+        </p>
+        {open.length === 0 ? (
+          <p className="text-sm text-slate-600">No issued documents awaiting a response.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50 text-left text-slate-600">
+                <tr>
+                  <th className="px-3 py-2">Document</th>
+                  <th className="px-3 py-2">Job</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Response required</th>
+                  <th className="px-3 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {open.map((d) => (
+                  <tr key={d.id} className="border-t border-slate-100">
+                    <td className="px-3 py-2">
+                      <Link
+                        href={`/contractflow/${d.jobId}/doc/${d.id}`}
+                        className="text-blue-700 underline"
+                      >
+                        {documentTitle(d)}
+                      </Link>
+                    </td>
+                    <td className="px-3 py-2">
+                      {d.jobNumber} — {d.jobName}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[d.status]}`}>
+                        {STATUS_LABEL[d.status]}
+                      </span>
+                      {d.overdue && (
+                        <span className="ml-2 rounded bg-red-100 px-2 py-0.5 text-xs text-red-800">
+                          Overdue
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">{formatIsoDate(d.responseRequiredBy)}</td>
+                    <td className="px-3 py-2 text-right">
+                      <Link
+                        href={`/contractflow/${d.jobId}/doc/${d.id}?respond=1`}
+                        className="whitespace-nowrap text-blue-700 underline"
+                      >
+                        {d.kind === "nod" ? "Record acknowledgement" : "Record response"} →
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Jobs</h2>

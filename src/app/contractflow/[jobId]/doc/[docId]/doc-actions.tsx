@@ -6,6 +6,7 @@ import { useState } from "react";
 import {
   deleteDraftAction,
   issueAction,
+  recordResponseAction,
   startRevisionAction,
   withdrawAction,
 } from "../../../actions";
@@ -15,13 +16,17 @@ type Props = {
   jobId: string;
   kind: "rfi" | "nod" | "eot";
   status: "draft" | "issued" | "answered" | "approved" | "rejected" | "withdrawn" | "acknowledged";
+  initialShowResponse?: boolean;
 };
 
-export function DocActions({ documentId, jobId, kind, status }: Props) {
+export function DocActions({ documentId, jobId, kind, status, initialShowResponse }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [showResponse, setShowResponse] = useState(
+    (initialShowResponse ?? false) && status === "issued",
+  );
 
   async function run(fn: () => Promise<{ error?: string } | { ok: true } | void>) {
     setPending(true);
@@ -60,6 +65,11 @@ export function DocActions({ documentId, jobId, kind, status }: Props) {
     router.refresh();
   }
 
+  async function onRespond(formData: FormData) {
+    const ok = await run(() => recordResponseAction(documentId, formData));
+    if (ok) setShowResponse(false);
+  }
+
   const btn =
     "rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50";
   const primaryBtn =
@@ -92,6 +102,9 @@ export function DocActions({ documentId, jobId, kind, status }: Props) {
 
         {status === "issued" && (
           <>
+            <button onClick={() => setShowResponse((s) => !s)} className={primaryBtn}>
+              {kind === "nod" ? "Record acknowledgement" : "Record response"}
+            </button>
             <button
               onClick={() => {
                 if (confirm("Start a revision? The current version is archived when you reissue.")) {
@@ -137,6 +150,44 @@ export function DocActions({ documentId, jobId, kind, status }: Props) {
 
       {error && <p className="text-sm text-red-600">{error}</p>}
       {notice && <p className="text-sm text-green-700">{notice}</p>}
+
+      {showResponse && (
+        <form action={onRespond} className="space-y-3 border-t border-slate-100 pt-3 text-sm">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block">
+              <span className="text-slate-600">Outcome</span>
+              <select
+                name="status"
+                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2"
+              >
+                {kind === "rfi" ? (
+                  <option value="answered">Answered</option>
+                ) : kind === "nod" ? (
+                  <option value="acknowledged">Acknowledged</option>
+                ) : (
+                  <>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </>
+                )}
+              </select>
+            </label>
+            <label className="block rounded-md border border-slate-200 bg-slate-50 p-3">
+              <span className="font-medium text-slate-700">
+                Principal's response file (optional)
+              </span>
+              <input name="file" type="file" className="mt-2 w-full" />
+            </label>
+            <label className="block sm:col-span-2">
+              <span className="text-slate-600">Note (optional)</span>
+              <input name="note" className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2" />
+            </label>
+          </div>
+          <button type="submit" disabled={pending} className={primaryBtn}>
+            {pending ? "Saving…" : "Save response"}
+          </button>
+        </form>
+      )}
     </div>
   );
 }

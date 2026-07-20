@@ -1,8 +1,9 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   type ContractDocContent,
+  contractDocFiles,
   contractDocVersions,
   contractDocuments,
   jobs,
@@ -12,6 +13,7 @@ import { addOrdinaryDays, addWorkingDays } from "@/lib/working-days";
 
 export type ContractDocument = typeof contractDocuments.$inferSelect;
 export type ContractDocVersion = typeof contractDocVersions.$inferSelect;
+export type ContractDocFile = typeof contractDocFiles.$inferSelect;
 export type ContractDocKind = ContractDocument["kind"];
 
 function newId(): string {
@@ -251,6 +253,44 @@ export async function startRevision(id: string): Promise<ContractDocument> {
   return row;
 }
 
+const RESPONSE_STATUS_BY_KIND: Record<ContractDocKind, ReadonlySet<string>> = {
+  rfi: new Set(["answered"]),
+  nod: new Set(["acknowledged"]),
+  eot: new Set(["approved", "rejected"]),
+};
+
+export type RecordResponseInput = {
+  status: "answered" | "approved" | "rejected" | "acknowledged";
+  respondedBy: string;
+  note?: string | null;
+};
+
+export async function recordResponse(
+  id: string,
+  input: RecordResponseInput,
+): Promise<ContractDocument> {
+  const doc = await findById(id);
+  if (!doc) throw new Error("Document not found.");
+  if (doc.status !== "issued") {
+    throw new Error("Only an issued document can receive a response.");
+  }
+  if (!RESPONSE_STATUS_BY_KIND[doc.kind].has(input.status)) {
+    throw new Error(`A ${KIND_LABEL[doc.kind]} cannot be marked '${input.status}'.`);
+  }
+  const [row] = await db
+    .update(contractDocuments)
+    .set({
+      status: input.status,
+      respondedAt: new Date(),
+      respondedBy: input.respondedBy,
+      responseNote: input.note ?? null,
+      updatedAt: new Date(),
+    })
+    .where(eq(contractDocuments.id, id))
+    .returning();
+  return row;
+}
+
 export async function withdraw(id: string): Promise<ContractDocument> {
   const doc = await findById(id);
   if (!doc) throw new Error("Document not found.");
@@ -356,4 +396,127 @@ export async function listForJob(jobId: string): Promise<ContractDocument[]> {
       sql`"number" ASC NULLS LAST`,
       asc(contractDocuments.createdAt),
     );
+}
+
+export type OpenDocumentRow = ContractDocument & {
+  jobNumber: string;
+  jobName: string;
+  overdue: boolean;
+};
+
+function isoDateAt(now: Date): string {
+  return now.toISOString().slice(0, 10);
+}
+
+/** Issued documents across all jobs, with overdue flag for RFIs past their response date. */
+export async function listOpenAcrossJobs(now: Date = new Date()): Promise<OpenDocumentRow[]> {
+  const today = isoDateAt(now);
+  const rows = await db
+    .select({
+      doc: contractDocuments,
+      jobNumber: jobs.number,
+      jobName: jobs.name,
+    })
+    .from(contractDocuments)
+    .innerJoin(jobs, eq(contractDocuments.jobId, jobs.id))
+    .where(eq(contractDocuments.status, "issued"))
+    .orderBy(desc(contractDocuments.updatedAt));
+  return rows.map((r) => ({
+    ...r.doc,
+    jobNumber: r.jobNumber,
+    jobName: r.jobName,
+    overdue:
+      r.doc.kind === "rfi" &&
+      r.doc.responseRequiredBy != null &&
+      r.doc.responseRequiredBy < today,
+  }));
+}
+
+export type AddDocFileInput = {
+  documentId: string;
+  role: "attachment" | "response" | "photo";
+  path: string;
+  originalFilename: string;
+  uploadedBy: string;
+};
+
+export async function addDocFile(input: AddDocFileInput): Promise<ContractDocFile> {
+  const [row] = await db
+    .insert(contractDocFiles)
+    .values({ id: newId(), ...input })
+    .returning();
+  return row;
+}
+
+export async function listDocFiles(documentId: string): Promise<ContractDocFile[]> {
+  return db
+    .select()
+    .from(contractDocFiles)
+    .where(eq(contractDocFiles.documentId, documentId))
+    .orderBy(asc(contractDocFiles.createdAt));
+}
+
+/** Issued RFIs past their response-required-by date, not yet notified. */
+export async function overdueRfiScan(now: Date = new Date()): Promise<ContractDocument[]> {
+  const today = isoDateAt(now);
+  return db
+    .select()
+    .from(contractDocuments)
+    .where(
+      and(
+        eq(contractDocuments.kind, "rfi"),
+        eq(contractDocuments.status, "issued"),
+        sql`"response_required_by" < ${today}`,
+        isNull(contractDocuments.overdueNotifiedAt),
+      ),
+    )
+    .orderBy(asc(contractDocuments.responseRequiredBy));
+}
+
+export type ContractDocScanResult = {
+  overdueNotified: number;
+  scanned: number;
+};
+
+/**
+ * Notify every active admin about overdue RFI responses, once per document
+ * (`overdue_notified_at` stamps delivery, mirroring corrective-action scans).
+ */
+export async function runContractDocScans(now: Date = new Date()): Promise<ContractDocScanResult> {
+  const { send } = await import("@/lib/notify");
+  const { user } = await import("@/db/schema");
+  const overdue = await overdueRfiScan(now);
+  if (overdue.length === 0) return { overdueNotified: 0, scanned: 0 };
+
+  const admins = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(eq(user.role, "admin"), isNull(user.deactivatedAt)));
+
+  let notified = 0;
+  for (const doc of overdue) {
+    const jobRows = await db.select().from(jobs).where(eq(jobs.id, doc.jobId)).limit(1);
+    const job = jobRows[0];
+    const title = documentTitle(doc);
+    const body = `${title} on ${job?.number ?? "?"} - ${job?.name ?? "?"} has passed its response-required-by date (${doc.responseRequiredBy}).`;
+    for (const admin of admins) {
+      await send({
+        userId: admin.id,
+        type: "contract_doc_overdue",
+        entityType: "contract_document",
+        entityId: doc.id,
+        body,
+        email: {
+          subject: `Overdue response: ${title} (${job?.number ?? "?"})`,
+          text: body,
+        },
+      });
+    }
+    await db
+      .update(contractDocuments)
+      .set({ overdueNotifiedAt: now, updatedAt: now })
+      .where(eq(contractDocuments.id, doc.id));
+    notified += 1;
+  }
+  return { overdueNotified: notified, scanned: overdue.length };
 }

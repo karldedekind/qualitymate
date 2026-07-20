@@ -199,7 +199,66 @@ describe("revisions", () => {
   });
 });
 
-describe("withdraw", () => {
+describe("responses + withdraw", () => {
+  it("records an RFI answer", async () => {
+    const { createDraft, issue, recordResponse } = await import("@/lib/contract-documents");
+    const { job, user } = await createJob();
+    const doc = await createDraft({ jobId: job.id, kind: "rfi", createdBy: user.id, content: {} });
+    await issue(doc.id, user.id, renderFake);
+
+    const answered = await recordResponse(doc.id, {
+      status: "answered",
+      respondedBy: user.id,
+      note: "Approved via email",
+    });
+    expect(answered.status).toBe("answered");
+    expect(answered.respondedAt).not.toBeNull();
+  });
+
+  it("EOT approves/rejects; RFI cannot be 'approved'; draft cannot respond", async () => {
+    const { createDraft, issue, recordResponse } = await import("@/lib/contract-documents");
+    const { job, user } = await createJob();
+    const rfi = await createDraft({ jobId: job.id, kind: "rfi", createdBy: user.id, content: {} });
+    await issue(rfi.id, user.id, renderFake);
+    await expect(
+      recordResponse(rfi.id, { status: "approved", respondedBy: user.id }),
+    ).rejects.toThrow();
+
+    const eot = await createDraft({
+      jobId: job.id,
+      kind: "eot",
+      createdBy: user.id,
+      content: {},
+      daysClaimed: 48,
+    });
+    await expect(
+      recordResponse(eot.id, { status: "approved", respondedBy: user.id }),
+    ).rejects.toThrow();
+    await issue(eot.id, user.id, renderFake);
+    const approved = await recordResponse(eot.id, { status: "approved", respondedBy: user.id });
+    expect(approved.status).toBe("approved");
+  });
+
+  it("NOD acknowledges; cannot be 'answered' or 'approved'", async () => {
+    const { createDraft, issue, recordResponse } = await import("@/lib/contract-documents");
+    const { job, user } = await createJob();
+    const nod = await createDraft({ jobId: job.id, kind: "nod", createdBy: user.id, content: {} });
+    await issue(nod.id, user.id, renderFake);
+    await expect(
+      recordResponse(nod.id, { status: "answered", respondedBy: user.id }),
+    ).rejects.toThrow();
+    await expect(
+      recordResponse(nod.id, { status: "approved", respondedBy: user.id }),
+    ).rejects.toThrow();
+    const acknowledged = await recordResponse(nod.id, {
+      status: "acknowledged",
+      respondedBy: user.id,
+      note: "Noted by superintendent",
+    });
+    expect(acknowledged.status).toBe("acknowledged");
+    expect(acknowledged.respondedAt).not.toBeNull();
+  });
+
   it("withdraw only from issued", async () => {
     const { createDraft, issue, withdraw } = await import("@/lib/contract-documents");
     const { job, user } = await createJob();
@@ -212,20 +271,11 @@ describe("withdraw", () => {
   });
 });
 
-// recordResponse arrives with ticket 06; until then decide an EOT directly.
-async function decideEot(id: string, status: "approved" | "rejected") {
-  const { db } = await import("@/db");
-  const { contractDocuments } = await import("@/db/schema");
-  const { eq } = await import("drizzle-orm");
-  await db
-    .update(contractDocuments)
-    .set({ status, respondedAt: new Date() })
-    .where(eq(contractDocuments.id, id));
-}
-
 describe("EOT arithmetic", () => {
   it("computeEotDefaults chains off approved EOTs", async () => {
-    const { createDraft, issue, computeEotDefaults } = await import("@/lib/contract-documents");
+    const { createDraft, issue, recordResponse, computeEotDefaults } = await import(
+      "@/lib/contract-documents"
+    );
     const { job, user } = await createJob();
 
     const first = await computeEotDefaults(job.id, 48);
@@ -242,7 +292,7 @@ describe("EOT arithmetic", () => {
       ...first,
     });
     await issue(eot.id, user.id, renderFake);
-    await decideEot(eot.id, "approved");
+    await recordResponse(eot.id, { status: "approved", respondedBy: user.id });
 
     const second = await computeEotDefaults(job.id, 10);
     expect(second.previousEotDays).toBe(48);
@@ -252,7 +302,9 @@ describe("EOT arithmetic", () => {
   });
 
   it("rejected EOTs do not move the adjusted date", async () => {
-    const { createDraft, issue, computeEotDefaults } = await import("@/lib/contract-documents");
+    const { createDraft, issue, recordResponse, computeEotDefaults } = await import(
+      "@/lib/contract-documents"
+    );
     const { job, user } = await createJob();
     const eot = await createDraft({
       jobId: job.id,
@@ -265,7 +317,7 @@ describe("EOT arithmetic", () => {
       adjustedPcDate: "2026-09-29",
     });
     await issue(eot.id, user.id, renderFake);
-    await decideEot(eot.id, "rejected");
+    await recordResponse(eot.id, { status: "rejected", respondedBy: user.id });
 
     const next = await computeEotDefaults(job.id, 5);
     expect(next.previousEotDays).toBe(0);
@@ -285,7 +337,7 @@ describe("EOT arithmetic", () => {
   });
 
   it("currentAdjustedPcDate reflects the latest approved EOT", async () => {
-    const { createDraft, issue, currentAdjustedPcDate } = await import(
+    const { createDraft, issue, recordResponse, currentAdjustedPcDate } = await import(
       "@/lib/contract-documents"
     );
     const { job, user } = await createJob();
@@ -302,14 +354,13 @@ describe("EOT arithmetic", () => {
       adjustedPcDate: "2026-09-29",
     });
     await issue(eot.id, user.id, renderFake);
-    await decideEot(eot.id, "approved");
+    await recordResponse(eot.id, { status: "approved", respondedBy: user.id });
     expect(await currentAdjustedPcDate(job.id)).toBe("2026-09-29");
   });
 
   it("issue refuses an EOT whose base figures went stale; re-saving refreshes", async () => {
-    const { createDraft, issue, updateDraft, computeEotDefaults, findById } = await import(
-      "@/lib/contract-documents"
-    );
+    const { createDraft, issue, recordResponse, updateDraft, computeEotDefaults, findById } =
+      await import("@/lib/contract-documents");
     const { job, user } = await createJob();
 
     const defaultsA = await computeEotDefaults(job.id, 48);
@@ -332,7 +383,7 @@ describe("EOT arithmetic", () => {
     });
 
     await issue(a.id, user.id, renderFake);
-    await decideEot(a.id, "approved");
+    await recordResponse(a.id, { status: "approved", respondedBy: user.id });
 
     // B's figures still say "no previous claims" — refuse to print them.
     await expect(issue(b.id, user.id, renderFake)).rejects.toThrow(/out of date/i);
@@ -347,6 +398,39 @@ describe("EOT arithmetic", () => {
   });
 });
 
+describe("overdue scan", () => {
+  it("notifies admins once per overdue RFI, stamps overdueNotifiedAt", async () => {
+    const { createDraft, issue, runContractDocScans, findById } = await import(
+      "@/lib/contract-documents"
+    );
+    const { db } = await import("@/db");
+    const { notifications } = await import("@/db/schema");
+    const { job, user } = await createJob();
+
+    const doc = await createDraft({
+      jobId: job.id,
+      kind: "rfi",
+      createdBy: user.id,
+      content: {},
+      responseRequiredBy: "2026-05-29",
+    });
+    await issue(doc.id, user.id, renderFake);
+
+    const now = new Date("2026-06-15T00:00:00Z");
+    const first = await runContractDocScans(now);
+    expect(first.overdueNotified).toBe(1);
+    expect((await findById(doc.id))?.overdueNotifiedAt).not.toBeNull();
+
+    const rows = await db.select().from(notifications);
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows[0]!.type).toBe("contract_doc_overdue");
+
+    // second scan is a no-op
+    const second = await runContractDocScans(now);
+    expect(second.overdueNotified).toBe(0);
+  });
+});
+
 describe("register queries", () => {
   it("listForJob groups by kind, ordered by number", async () => {
     const { createDraft, issue, listForJob } = await import("@/lib/contract-documents");
@@ -358,5 +442,33 @@ describe("register queries", () => {
     const rows = await listForJob(job.id);
     expect(rows).toHaveLength(2);
     expect(rows[0]!.number).toBe(1); // issued first
+  });
+
+  it("listOpenAcrossJobs flags overdue RFIs", async () => {
+    const { createDraft, issue, listOpenAcrossJobs } = await import("@/lib/contract-documents");
+    const { job, user } = await createJob();
+    const overdue = await createDraft({
+      jobId: job.id,
+      kind: "rfi",
+      createdBy: user.id,
+      content: {},
+      responseRequiredBy: "2026-01-05",
+    });
+    const fine = await createDraft({
+      jobId: job.id,
+      kind: "rfi",
+      createdBy: user.id,
+      content: {},
+      responseRequiredBy: "2099-01-01",
+    });
+    await issue(overdue.id, user.id, renderFake);
+    await issue(fine.id, user.id, renderFake);
+
+    const open = await listOpenAcrossJobs(new Date("2026-07-16T00:00:00Z"));
+    expect(open).toHaveLength(2);
+    const flagged = open.find((r) => r.id === overdue.id)!;
+    expect(flagged.overdue).toBe(true);
+    expect(flagged.jobNumber).toBe("J1474");
+    expect(open.find((r) => r.id === fine.id)!.overdue).toBe(false);
   });
 });

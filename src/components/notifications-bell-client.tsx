@@ -25,10 +25,23 @@ export function NotificationsBellClient({
   const [, startTransition] = useTransition();
   const router = useRouter();
 
-  function onItemClick(id: number) {
+  function hrefFor(n: NotificationItem): string | null {
+    if (n.entityType === "contract_document" && n.entityId) {
+      return `/contractflow/doc/${n.entityId}`;
+    }
+    return null;
+  }
+
+  function onItemClick(n: NotificationItem) {
+    const href = hrefFor(n);
     startTransition(async () => {
-      await markReadAction(id);
-      router.refresh();
+      await markReadAction(n.id);
+      if (href) {
+        setOpen(false);
+        router.push(href);
+      } else {
+        router.refresh();
+      }
     });
   }
 
@@ -73,7 +86,7 @@ export function NotificationsBellClient({
                   className={`px-3 py-2 border-b border-slate-50 cursor-pointer hover:bg-slate-50 ${
                     n.readAt ? "" : "bg-blue-50"
                   }`}
-                  onClick={() => onItemClick(n.id)}
+                  onClick={() => onItemClick(n)}
                 >
                   <div className="text-sm">{n.body}</div>
                   <div className="text-xs text-slate-500 mt-1">
