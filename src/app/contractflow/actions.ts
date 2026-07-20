@@ -10,6 +10,8 @@ import { saveFile } from "@/lib/uploads";
 
 const DOC_FILE_MAX = 25 * 1024 * 1024;
 const DOC_FILE_EXT = new Set([".pdf", ".png", ".jpg", ".jpeg", ".webp", ".eml", ".msg", ".xlsx", ".docx"]);
+// PNG/JPEG only: photos are embedded into the issued PDF and pdfkit cannot render WebP.
+const DOC_PHOTO_EXT = new Set([".png", ".jpg", ".jpeg"]);
 
 const KindSchema = z.enum(["rfi", "nod", "eot"]);
 
@@ -62,6 +64,26 @@ function draftFields(formData: FormData) {
   return DraftFieldsSchema.safeParse(obj);
 }
 
+/** Files posted alongside a new draft, validated before the draft is created. */
+function draftUploads(formData: FormData) {
+  const entries: { file: File; role: "photo" | "attachment" }[] = [];
+  for (const [field, role] of [["photos", "photo"], ["documents", "attachment"]] as const) {
+    for (const v of formData.getAll(field)) {
+      if (!(v instanceof File) || v.size === 0) continue;
+      const ext = v.name.slice(v.name.lastIndexOf(".")).toLowerCase();
+      const allowed = role === "photo" ? DOC_PHOTO_EXT : DOC_FILE_EXT;
+      if (!allowed.has(ext)) {
+        return { error: `${v.name}: unsupported ${role === "photo" ? "photo" : "document"} type.` };
+      }
+      if (v.size > DOC_FILE_MAX) {
+        return { error: `${v.name}: too large. Max ${Math.round(DOC_FILE_MAX / 1024 / 1024)} MB.` };
+      }
+      entries.push({ file: v, role });
+    }
+  }
+  return { entries };
+}
+
 export async function createDraftAction(jobId: string, kind: string, formData: FormData) {
   const admin = await requireAdmin();
   const meta = await getRequestMeta();
@@ -70,6 +92,9 @@ export async function createDraftAction(jobId: string, kind: string, formData: F
   const parsed = draftFields(formData);
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
   const f = parsed.data;
+
+  const uploads = draftUploads(formData);
+  if ("error" in uploads) return { error: uploads.error };
 
   let eotDefaults: Partial<Awaited<ReturnType<typeof eotFields>>> = {};
   if (parsedKind.data === "eot") {
@@ -80,7 +105,7 @@ export async function createDraftAction(jobId: string, kind: string, formData: F
     }
   }
 
-  const { createDraft } = await import("@/lib/contract-documents");
+  const { createDraft, addDocFile } = await import("@/lib/contract-documents");
   const doc = await createDraft({
     jobId,
     kind: parsedKind.data,
@@ -92,6 +117,20 @@ export async function createDraftAction(jobId: string, kind: string, formData: F
     nodId: f.nodId || null,
     ...eotDefaults,
   });
+
+  for (const { file, role } of uploads.entries) {
+    const saved = await saveFile(`contract-files/${doc.id}`, file, {
+      allowedExt: role === "photo" ? DOC_PHOTO_EXT : DOC_FILE_EXT,
+      maxBytes: DOC_FILE_MAX,
+    });
+    await addDocFile({
+      documentId: doc.id,
+      role,
+      path: saved.path,
+      originalFilename: saved.originalFilename,
+      uploadedBy: admin.id,
+    });
+  }
 
   await record({
     actor: { id: admin.id, email: admin.email },
@@ -286,6 +325,42 @@ export async function withdrawAction(documentId: string) {
   } catch (err) {
     return { error: err instanceof Error ? err.message : "Withdraw failed." };
   }
+}
+
+export async function uploadAttachmentAction(documentId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { findById, addDocFile } = await import("@/lib/contract-documents");
+  const doc = await findById(documentId);
+  if (!doc) return { error: "Document not found." };
+  if (doc.status !== "draft") return { error: "Attachments are added while the document is a draft." };
+  const role = formData.get("role") === "photo" ? ("photo" as const) : ("attachment" as const);
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
+  try {
+    const saved = await saveFile(`contract-files/${documentId}`, file, {
+      allowedExt: role === "photo" ? DOC_PHOTO_EXT : DOC_FILE_EXT,
+      maxBytes: DOC_FILE_MAX,
+    });
+    await addDocFile({
+      documentId,
+      role,
+      path: saved.path,
+      originalFilename: saved.originalFilename,
+      uploadedBy: admin.id,
+    });
+    await record({
+      actor: { id: admin.id, email: admin.email },
+      action: "contract_doc.attachment.add",
+      entity: { type: "contract_document", id: documentId },
+      after: { filename: saved.originalFilename, role },
+      request: meta,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Upload failed." };
+  }
+  revalidatePath(`/contractflow/${doc.jobId}/doc/${documentId}`);
+  return { ok: true as const };
 }
 
 const JobContractSchema = z.object({

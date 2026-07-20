@@ -36,6 +36,8 @@ export default async function DocDetailPage({
   if (!job || !doc || doc.jobId !== jobId) notFound();
 
   const [versions, files] = await Promise.all([listVersions(docId), listDocFiles(docId)]);
+  const photos = files.filter((f) => f.role === "photo");
+  const attachments = files.filter((f) => f.role === "attachment");
   const responses = files.filter((f) => f.role === "response");
 
   return (
@@ -136,6 +138,53 @@ export default async function DocDetailPage({
           )}
         </dl>
       </section>
+
+      {photos.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Photos</h2>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {photos.map((f) => (
+              <li key={f.id}>
+                <a
+                  href={`/contractflow/file/${f.path}`}
+                  target="_blank"
+                  className="block overflow-hidden rounded-lg border border-slate-200 bg-white"
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={`/contractflow/file/${f.path}`}
+                    alt={f.originalFilename}
+                    className="h-32 w-full object-cover"
+                  />
+                  <span className="block truncate px-2 py-1 text-xs text-slate-600">
+                    {f.originalFilename}
+                  </span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {attachments.length > 0 && (
+        <section className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Documents
+          </h2>
+          <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white text-sm">
+            {attachments.map((f) => (
+              <li key={f.id} className="flex items-center gap-2 px-4 py-2">
+                <span className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-700">
+                  Attachment
+                </span>
+                <a href={`/contractflow/file/${f.path}`} className="text-blue-700 underline">
+                  {f.originalFilename}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {responses.length > 0 && (
         <section className="space-y-2">

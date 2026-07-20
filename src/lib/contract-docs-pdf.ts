@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { contractDocuments, jobs, user } from "@/db/schema";
 import { getBranding } from "@/lib/branding";
 import type { ContractDocument } from "@/lib/contract-documents";
-import { documentTitle } from "@/lib/contract-documents";
+import { documentTitle, listDocFiles } from "@/lib/contract-documents";
 import {
   INK,
   MUTED,
@@ -61,6 +61,50 @@ function fieldBlock(doc: PdfDoc, label: string, value: string, minHeight = 48): 
     .fontSize(10)
     .text(value.replace(/\r\n?/g, "\n").trim() || "—", left, doc.y, { width });
   doc.moveDown(0.8);
+}
+
+/**
+ * Embed uploaded photos, one per row inside a fixed-height box (pdfkit's
+ * `fit` doesn't report the rendered height). Falls back to the filename for
+ * unreadable or non-embeddable files (e.g. legacy WebP uploads).
+ */
+function photoBlock(doc: PdfDoc, label: string, photos: { path: string; name: string }[]): void {
+  const { left, width } = contentBox(doc);
+  const BOX_H = 250;
+  ensureSpace(doc, 60);
+  doc
+    .fillColor(MUTED)
+    .font("Helvetica-Bold")
+    .fontSize(10.5)
+    .text(label.toUpperCase(), left, doc.y, { width, characterSpacing: 0.5 });
+  const ruleY = doc.y + 2;
+  doc
+    .moveTo(left, ruleY)
+    .lineTo(left + width, ruleY)
+    .lineWidth(0.75)
+    .strokeColor(MUTED)
+    .stroke();
+  doc.y = ruleY + 6;
+  for (const p of photos) {
+    const full = join(uploadsRoot(), p.path);
+    const embeddable = /\.(png|jpe?g)$/i.test(p.path) && existsSync(full);
+    if (embeddable) {
+      ensureSpace(doc, BOX_H + 24);
+      const y = doc.y;
+      try {
+        doc.image(full, left, y, { fit: [width, BOX_H] });
+        doc.y = y + BOX_H + 4;
+      } catch {
+        doc.y = y;
+      }
+    }
+    doc
+      .fillColor(MUTED)
+      .font("Helvetica")
+      .fontSize(8)
+      .text(p.name, left, doc.y, { width });
+    doc.moveDown(0.8);
+  }
 }
 
 function signatureImagePath(relPath: string | null): string | null {
@@ -172,7 +216,7 @@ export async function renderContractDocPdf(
   docRow: ContractDocument,
   issuedByUserId: string,
 ): Promise<Buffer> {
-  const [jobRows, branding, contractor, issuerRows, links] = await Promise.all([
+  const [jobRows, branding, contractor, issuerRows, files, links] = await Promise.all([
     db.select().from(jobs).where(eq(jobs.id, docRow.jobId)).limit(1),
     getBranding(),
     getMany([
@@ -181,12 +225,15 @@ export async function renderContractDocPdf(
       KNOWN_KEYS.CONTRACTOR_EMAIL,
     ]),
     db.select().from(user).where(eq(user.id, issuedByUserId)).limit(1),
+    listDocFiles(docRow.id),
     resolveLinks(docRow),
   ]);
   const job = jobRows[0];
   if (!job) throw new Error("Job not found for PDF render.");
   const issuer = issuerRows[0] ?? null;
   const accent = branding.primaryColor;
+  const photos = files.filter((f) => f.role === "photo");
+  const attachments = files.filter((f) => f.role === "attachment");
 
   const PDFDocument = (await import("pdfkit")).default;
   const doc = new PDFDocument({
@@ -247,6 +294,20 @@ export async function renderContractDocPdf(
     fieldBlock(doc, "Question", content.question ?? "");
     if (docRow.responseRequiredBy) {
       fieldBlock(doc, "Response required by", formatDate(docRow.responseRequiredBy));
+    }
+    if (photos.length > 0) {
+      photoBlock(
+        doc,
+        "Photos",
+        photos.map((a) => ({ path: a.path, name: a.originalFilename })),
+      );
+    }
+    if (attachments.length > 0) {
+      fieldBlock(
+        doc,
+        "Attached documents",
+        attachments.map((a) => a.originalFilename).join("\n"),
+      );
     }
   } else if (docRow.kind === "nod") {
     fieldBlock(doc, "The cause of delay", content.cause ?? "");

@@ -8,6 +8,7 @@ import {
   issueAction,
   recordResponseAction,
   startRevisionAction,
+  uploadAttachmentAction,
   withdrawAction,
 } from "../../../actions";
 
@@ -70,6 +71,26 @@ export function DocActions({ documentId, jobId, kind, status, initialShowRespons
     if (ok) setShowResponse(false);
   }
 
+  async function uploadFiles(list: FileList | null, role: "photo" | "attachment") {
+    const files = Array.from(list ?? []);
+    if (files.length === 0) return;
+    setPending(true);
+    setError(null);
+    setNotice(null);
+    for (const f of files) {
+      const fd = new FormData();
+      fd.set("file", f);
+      fd.set("role", role);
+      const result = await uploadAttachmentAction(documentId, fd);
+      if (result && "error" in result && result.error) {
+        setError(`${f.name}: ${result.error}`);
+        break;
+      }
+    }
+    setPending(false);
+    router.refresh();
+  }
+
   const btn =
     "rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50 disabled:opacity-50";
   const primaryBtn =
@@ -86,6 +107,33 @@ export function DocActions({ documentId, jobId, kind, status, initialShowRespons
             <button onClick={onIssue} disabled={pending} className={primaryBtn}>
               Issue{kind === "rfi" ? " RFI" : kind === "nod" ? " NOD" : " EOT"}
             </button>
+            {kind === "rfi" && (
+              <label className={`${btn} cursor-pointer`}>
+                Add photos
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  multiple
+                  className="hidden"
+                  onChange={(e) => {
+                    void uploadFiles(e.target.files, "photo");
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            )}
+            <label className={`${btn} cursor-pointer`}>
+              {kind === "rfi" ? "Add documents" : "Add attachment"}
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void uploadFiles(e.target.files, "attachment");
+                  e.target.value = "";
+                }}
+              />
+            </label>
             <button
               onClick={() => {
                 if (confirm("Delete this draft?")) {
@@ -148,9 +196,6 @@ export function DocActions({ documentId, jobId, kind, status, initialShowRespons
         )}
       </div>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      {notice && <p className="text-sm text-green-700">{notice}</p>}
-
       {showResponse && (
         <form action={onRespond} className="space-y-3 border-t border-slate-100 pt-3 text-sm">
           <div className="grid gap-3 sm:grid-cols-2">
@@ -188,6 +233,9 @@ export function DocActions({ documentId, jobId, kind, status, initialShowRespons
           </button>
         </form>
       )}
+
+      {error && <p className="text-sm text-red-600">{error}</p>}
+      {notice && <p className="text-sm text-green-700">{notice}</p>}
     </div>
   );
 }

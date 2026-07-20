@@ -131,6 +131,31 @@ export function DocForm(props: Props) {
               />
             </label>
           </div>
+          {props.mode === "create" && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <span className="font-medium text-slate-700">Photos</span>
+                <span className="block text-xs text-slate-500">
+                  Site photos supporting the question, printed on the issued RFI. PNG or JPG.
+                </span>
+                <input
+                  name="photos"
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  multiple
+                  className="mt-2 w-full text-sm"
+                />
+              </label>
+              <label className="block rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <span className="font-medium text-slate-700">Documents</span>
+                <span className="block text-xs text-slate-500">
+                  Drawings, specs or correspondence, emailed with the issued RFI. PDF, Office,
+                  email or image files.
+                </span>
+                <input name="documents" type="file" multiple className="mt-2 w-full text-sm" />
+              </label>
+            </div>
+          )}
         </>
       )}
 
@@ -155,6 +180,16 @@ export function DocForm(props: Props) {
             options={props.rfiOptions}
             defaultValue={initial?.rfiId}
           />
+          {props.mode === "create" && (
+            <label className="block rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+              <span className="font-medium text-slate-700">Attachments</span>
+              <span className="block text-xs text-slate-500">
+                Supporting documents, emailed with the issued NOD. PDF, Office, email or image
+                files.
+              </span>
+              <input name="documents" type="file" multiple className="mt-2 w-full text-sm" />
+            </label>
+          )}
         </>
       )}
 

@@ -8,6 +8,7 @@ import {
   type ContractDocument,
   documentTitle,
   issue,
+  listDocFiles,
   listVersions,
 } from "@/lib/contract-documents";
 import { type MailAttachment, isConfigured as smtpConfigured, sendMail } from "@/lib/smtp";
@@ -78,13 +79,28 @@ export async function issueAndDistribute(
   const mailAttachments: MailAttachment[] = [
     { filename, content: pdfBytes, contentType: "application/pdf" },
   ];
+  const unreadable: string[] = [];
+  const docFiles = await listDocFiles(doc.id);
+  for (const f of docFiles.filter((f) => f.role === "attachment")) {
+    try {
+      mailAttachments.push({
+        filename: f.originalFilename,
+        content: await readFile(join(uploadsRoot(), f.path)),
+      });
+    } catch {
+      unreadable.push(f.originalFilename);
+    }
+  }
 
   const result = await sendMail({
     to: job.principalRepEmail,
     subject,
     text:
       `Please find attached ${documentTitle(doc)} for ${job.number} - ${job.name}.\n\n` +
-      `Issued by ${issuerName}.`,
+      `Issued by ${issuerName}.` +
+      (unreadable.length > 0
+        ? `\n\nNote: the following referenced documents could not be attached: ${unreadable.join(", ")}.`
+        : ""),
     attachments: mailAttachments,
   });
   if (!result.ok) {
