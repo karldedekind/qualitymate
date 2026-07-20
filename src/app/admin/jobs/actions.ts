@@ -52,7 +52,7 @@ export async function createJobAction(formData: FormData) {
   });
 
   revalidatePath("/admin/jobs");
-  redirect("/admin/jobs");
+  redirect(`/admin/jobs/new?job=${created.id}`);
 }
 
 const UpdateSchema = z.object({

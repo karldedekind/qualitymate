@@ -14,6 +14,7 @@ import {
   listVariationFilesForJob,
   listVariationsForJob,
 } from "@/lib/variations";
+import { CollapsibleSection } from "../collapsible";
 import { CommList } from "../comm-list";
 import { STATUS_CLASS, STATUS_LABEL, formatIsoDate, formatMoney } from "../format";
 import { CommForm } from "./comm-form";
@@ -147,27 +148,24 @@ export default async function JobRegisterPage({
         </div>
       </section>
 
-      <section className="space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-            Register
-          </h2>
-          <div className="ml-auto flex gap-2">
-            {(["rfi", "nod", "eot"] as const).map((k) => (
-              <Link
-                key={k}
-                href={`/contractflow/${jobId}/new/${k}`}
-                className="rounded-md bg-blue-700 px-3 py-1.5 text-sm font-medium text-white"
-              >
-                New {k.toUpperCase()}
-              </Link>
-            ))}
-          </div>
-        </div>
+      <CollapsibleSection
+        title="Register"
+        collapsible={false}
+        tone="accent"
+        actions={(["rfi", "nod", "eot"] as const).map((k) => (
+          <Link
+            key={k}
+            href={`/contractflow/${jobId}/new/${k}`}
+            className="rounded-md bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800"
+          >
+            New {k.toUpperCase()}
+          </Link>
+        ))}
+      >
         <DocTable jobId={jobId} docs={rfis} title="Requests for Information" />
         <DocTable jobId={jobId} docs={nods} title="Notices of Delay" />
         <DocTable jobId={jobId} docs={eots} title="Extensions of Time" />
-      </section>
+      </CollapsibleSection>
 
       <VariationsPanel
         jobId={jobId}
@@ -180,21 +178,15 @@ export default async function JobRegisterPage({
         }))}
       />
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Communications
-        </h2>
+      <CollapsibleSection title="Communications" badge={comms.length > 0 ? String(comms.length) : undefined}>
         <CommForm
           jobId={jobId}
           documents={issuedDocs.map((d) => ({ id: d.id, label: documentTitle(d) }))}
         />
         <CommList comms={comms} emptyText="No communications logged." />
-      </section>
+      </CollapsibleSection>
 
-      <section className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Contract details
-        </h2>
+      <CollapsibleSection title="Contract details">
         <ContractForm
           jobId={jobId}
           initial={{
@@ -215,7 +207,7 @@ export default async function JobRegisterPage({
             originalFilename: f.originalFilename,
           }))}
         />
-      </section>
+      </CollapsibleSection>
     </div>
   );
 }

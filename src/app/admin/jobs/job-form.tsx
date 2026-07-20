@@ -72,7 +72,7 @@ export function JobForm(props: Props) {
           disabled={pending}
           className="rounded-md bg-blue-700 text-white px-4 py-2 font-medium disabled:opacity-50"
         >
-          {pending ? "Saving…" : props.mode === "create" ? "Create job" : "Save changes"}
+          {pending ? "Saving…" : props.mode === "create" ? "Create & continue" : "Save changes"}
         </button>
       </div>
     </form>
