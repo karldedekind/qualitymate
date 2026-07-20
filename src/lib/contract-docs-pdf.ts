@@ -302,13 +302,6 @@ export async function renderContractDocPdf(
         photos.map((a) => ({ path: a.path, name: a.originalFilename })),
       );
     }
-    if (attachments.length > 0) {
-      fieldBlock(
-        doc,
-        "Attached documents",
-        attachments.map((a) => a.originalFilename).join("\n"),
-      );
-    }
   } else if (docRow.kind === "nod") {
     fieldBlock(doc, "The cause of delay", content.cause ?? "");
     fieldBlock(doc, "Date(s) on which it occurred", content.datesOccurred ?? "");
@@ -337,6 +330,14 @@ export async function renderContractDocPdf(
       ],
     ]);
     doc.moveDown(1);
+  }
+
+  if (attachments.length > 0) {
+    fieldBlock(
+      doc,
+      "Attached documents",
+      attachments.map((a) => a.originalFilename).join("\n"),
+    );
   }
 
   if (docRow.kind === "rfi") {
