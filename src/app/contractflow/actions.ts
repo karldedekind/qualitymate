@@ -28,6 +28,7 @@ const DraftFieldsSchema = z.object({
   adjustedPcDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().or(z.literal("")),
   rfiId: z.string().optional().or(z.literal("")),
   nodId: z.string().optional().or(z.literal("")),
+  variationId: z.string().optional().or(z.literal("")),
 });
 
 function contentFrom(kind: z.infer<typeof KindSchema>, f: z.infer<typeof DraftFieldsSchema>) {
@@ -54,7 +55,7 @@ function draftFields(formData: FormData) {
   const obj: Record<string, unknown> = {};
   for (const key of [
     "question", "cause", "datesOccurred", "daysDelayed", "clausePreamble", "reasons",
-    "request", "responseRequiredBy", "adjustedPcDate", "rfiId", "nodId",
+    "request", "responseRequiredBy", "adjustedPcDate", "rfiId", "nodId", "variationId",
   ]) {
     const v = formData.get(key);
     if (v != null && v !== "") obj[key] = v;
@@ -115,6 +116,7 @@ export async function createDraftAction(jobId: string, kind: string, formData: F
     daysClaimed: f.daysClaimed ?? null,
     rfiId: f.rfiId || null,
     nodId: f.nodId || null,
+    variationId: f.variationId || null,
     ...eotDefaults,
   });
 
@@ -169,6 +171,7 @@ export async function updateDraftAction(documentId: string, formData: FormData) 
       daysClaimed: f.daysClaimed ?? null,
       rfiId: f.rfiId || null,
       nodId: f.nodId || null,
+      variationId: f.variationId || null,
       ...eotPatch,
     });
   } catch (err) {
@@ -448,6 +451,187 @@ export async function uploadJobContractFileAction(jobId: string, formData: FormD
     return { error: err instanceof Error ? err.message : "Upload failed." };
   }
   revalidatePath(`/contractflow/${jobId}`);
+  return { ok: true as const };
+}
+
+export async function linkVariationAction(documentId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { findById, linkVariation } = await import("@/lib/contract-documents");
+  const doc = await findById(documentId);
+  if (!doc) return { error: "Document not found." };
+  const raw = formData.get("variationId");
+  const variationId = typeof raw === "string" && raw !== "" ? raw : null;
+  if (variationId) {
+    const { findVariationById } = await import("@/lib/variations");
+    const v = await findVariationById(variationId);
+    if (!v || v.jobId !== doc.jobId) return { error: "Variation not found on this job." };
+  }
+  await linkVariation(documentId, variationId);
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "contract_doc.link_variation",
+    entity: { type: "contract_document", id: documentId },
+    after: { variationId },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${doc.jobId}/doc/${documentId}`);
+  return { ok: true as const };
+}
+
+// --- Variations ---
+
+const VariationSchema = z.object({
+  description: z.string().min(1, "Description is required").max(5000),
+  number: z.coerce.number().int().min(1).optional(),
+  claimedValueDollars: z.coerce.number().optional(),
+  timeImpactDays: z.coerce.number().int().optional(),
+});
+
+export async function createVariationAction(jobId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const obj: Record<string, unknown> = { description: formData.get("description") };
+  for (const key of ["number", "claimedValueDollars", "timeImpactDays"] as const) {
+    const raw = formData.get(key);
+    if (raw != null && raw !== "") obj[key] = raw;
+  }
+  const parsed = VariationSchema.safeParse(obj);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  const file = formData.get("file");
+  if (file instanceof File && file.size > 0) {
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    if (!DOC_FILE_EXT.has(ext)) return { error: `${file.name}: unsupported file type.` };
+    if (file.size > DOC_FILE_MAX) {
+      return { error: `${file.name}: too large. Max ${Math.round(DOC_FILE_MAX / 1024 / 1024)} MB.` };
+    }
+  }
+
+  const { createVariation, addVariationFile } = await import("@/lib/variations");
+  let v;
+  try {
+    v = await createVariation({
+      jobId,
+      description: parsed.data.description,
+      number: parsed.data.number ?? null,
+      claimedValueCents:
+        parsed.data.claimedValueDollars != null
+          ? Math.round(parsed.data.claimedValueDollars * 100)
+          : null,
+      timeImpactDays: parsed.data.timeImpactDays ?? null,
+      createdBy: admin.id,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Could not create the variation." };
+  }
+
+  if (file instanceof File && file.size > 0) {
+    try {
+      const saved = await saveFile(`variation-files/${v.id}`, file, {
+        allowedExt: DOC_FILE_EXT,
+        maxBytes: DOC_FILE_MAX,
+      });
+      await addVariationFile({
+        variationId: v.id,
+        path: saved.path,
+        originalFilename: saved.originalFilename,
+        uploadedBy: admin.id,
+      });
+    } catch {
+      // Variation is created; a failed attachment can be re-added from the row.
+    }
+  }
+
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "variation.create",
+    entity: { type: "variation", id: v.id },
+    after: { jobId, number: v.number },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${jobId}`);
+  return { ok: true as const };
+}
+
+const VariationStatusSchema = z.object({
+  status: z.enum(["proposed", "submitted", "approved", "rejected", "deleted"]),
+  approvedValueDollars: z.coerce.number().optional(),
+});
+
+export async function setVariationStatusAction(variationId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const obj: Record<string, unknown> = { status: formData.get("status") };
+  const approvedRaw = formData.get("approvedValueDollars");
+  if (approvedRaw != null && approvedRaw !== "") obj.approvedValueDollars = approvedRaw;
+  const parsed = VariationStatusSchema.safeParse(obj);
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const status = parsed.data.status;
+  const { findVariationById, updateVariation, decideVariation, deleteVariation } = await import(
+    "@/lib/variations"
+  );
+  const v = await findVariationById(variationId);
+  if (!v) return { error: "Variation not found." };
+
+  try {
+    if (status === "submitted" || status === "proposed") {
+      await updateVariation(variationId, { status });
+    } else if (status === "approved" || status === "rejected") {
+      await decideVariation(variationId, {
+        status,
+        approvedValueCents:
+          parsed.data.approvedValueDollars != null
+            ? Math.round(parsed.data.approvedValueDollars * 100)
+            : undefined,
+      });
+    } else {
+      await deleteVariation(variationId);
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Update failed." };
+  }
+
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: `variation.${status === "deleted" ? "delete" : status}`,
+    entity: { type: "variation", id: variationId },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${v.jobId}`);
+  return { ok: true as const };
+}
+
+export async function uploadVariationFileAction(variationId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const { findVariationById, addVariationFile } = await import("@/lib/variations");
+  const v = await findVariationById(variationId);
+  if (!v) return { error: "Variation not found." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
+  try {
+    const saved = await saveFile(`variation-files/${variationId}`, file, {
+      allowedExt: DOC_FILE_EXT,
+      maxBytes: DOC_FILE_MAX,
+    });
+    await addVariationFile({
+      variationId,
+      path: saved.path,
+      originalFilename: saved.originalFilename,
+      uploadedBy: admin.id,
+    });
+    await record({
+      actor: { id: admin.id, email: admin.email },
+      action: "variation.file.add",
+      entity: { type: "variation", id: variationId },
+      after: { filename: saved.originalFilename },
+      request: meta,
+    });
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "Upload failed." };
+  }
+  revalidatePath(`/contractflow/${v.jobId}`);
   return { ok: true as const };
 }
 

@@ -437,6 +437,45 @@ export const contractDocFiles = pgTable("contract_doc_files", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const variationStatusEnum = pgEnum("variation_status", [
+  "proposed",
+  "submitted",
+  "approved",
+  "rejected",
+]);
+
+export const variations = pgTable(
+  "variations",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => jobs.id, { onDelete: "restrict" }),
+    number: integer("number").notNull(),
+    description: text("description").notNull(),
+    claimedValueCents: bigint("claimed_value_cents", { mode: "number" }),
+    approvedValueCents: bigint("approved_value_cents", { mode: "number" }),
+    timeImpactDays: integer("time_impact_days"),
+    status: variationStatusEnum("status").notNull().default("proposed"),
+    decidedAt: timestamp("decided_at"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("variations_job_number_idx").on(t.jobId, t.number)],
+);
+
+export const variationFiles = pgTable("variation_files", {
+  id: text("id").primaryKey(),
+  variationId: text("variation_id")
+    .notNull()
+    .references(() => variations.id, { onDelete: "cascade" }),
+  path: text("path").notNull(),
+  originalFilename: text("original_filename").notNull(),
+  uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const setupState = pgTable("setup_state", {
   id: integer("id").primaryKey().default(1),
   step: text("step").notNull().default("welcome"),

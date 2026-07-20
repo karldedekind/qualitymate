@@ -5,13 +5,36 @@ import {
   documentTitle,
   findById,
   listDocFiles,
+  listForJob,
   listVersions,
 } from "@/lib/contract-documents";
 import { findJobById } from "@/lib/jobs";
-import { STATUS_CLASS, STATUS_LABEL, formatIsoDate } from "../../../format";
+import { listVariationsForJob } from "@/lib/variations";
+import {
+  STATUS_CLASS,
+  STATUS_LABEL,
+  formatIsoDate,
+  formatMoney,
+  variationTitle,
+} from "../../../format";
 import { DocActions } from "./doc-actions";
+import { LinkVariationForm } from "./link-variation-form";
 
 export const dynamic = "force-dynamic";
+
+const VARIATION_STATUS_LABEL: Record<string, string> = {
+  proposed: "Proposed",
+  submitted: "Submitted",
+  approved: "Approved",
+  rejected: "Rejected",
+};
+
+const VARIATION_STATUS_CLASS: Record<string, string> = {
+  proposed: "bg-slate-100 text-slate-700",
+  submitted: "bg-blue-100 text-blue-800",
+  approved: "bg-green-100 text-green-800",
+  rejected: "bg-red-100 text-red-800",
+};
 
 const CONTENT_LABELS: Record<string, string> = {
   question: "Question",
@@ -35,7 +58,17 @@ export default async function DocDetailPage({
   const [job, doc] = await Promise.all([findJobById(jobId), findById(docId)]);
   if (!job || !doc || doc.jobId !== jobId) notFound();
 
-  const [versions, files] = await Promise.all([listVersions(docId), listDocFiles(docId)]);
+  const [versions, files, variations, jobDocs] = await Promise.all([
+    listVersions(docId),
+    listDocFiles(docId),
+    listVariationsForJob(jobId),
+    listForJob(jobId),
+  ]);
+  const linkedVariation = variations.find((v) => v.id === doc.variationId) ?? null;
+  const linkedNods = jobDocs.filter((d) => d.kind === "nod" && d.rfiId === docId);
+  const linkedEots = jobDocs.filter((d) => d.kind === "eot" && d.nodId === docId);
+  const linkedRfi = jobDocs.find((d) => d.id === doc.rfiId) ?? null;
+  const linkedNod = jobDocs.find((d) => d.id === doc.nodId) ?? null;
   const photos = files.filter((f) => f.role === "photo");
   const attachments = files.filter((f) => f.role === "attachment");
   const responses = files.filter((f) => f.role === "response");
@@ -137,6 +170,199 @@ export default async function DocDetailPage({
             </div>
           )}
         </dl>
+      </section>
+
+      <section className="space-y-4 rounded-lg border border-slate-200 bg-white p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Linked documents
+        </h2>
+
+        {doc.kind === "nod" && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              RFI reference
+            </p>
+            {linkedRfi ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/contractflow/${jobId}/doc/${linkedRfi.id}`}
+                    className="font-medium text-blue-700 underline"
+                  >
+                    {documentTitle(linkedRfi)}
+                  </Link>
+                  <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[linkedRfi.status]}`}>
+                    {STATUS_LABEL[linkedRfi.status]}
+                  </span>
+                </div>
+                {linkedRfi.content.question && (
+                  <p className="mt-1 line-clamp-2 text-slate-700">{linkedRfi.content.question}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">No RFI linked.</p>
+            )}
+          </div>
+        )}
+
+        {doc.kind === "eot" && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              NOD reference
+            </p>
+            {linkedNod ? (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link
+                    href={`/contractflow/${jobId}/doc/${linkedNod.id}`}
+                    className="font-medium text-blue-700 underline"
+                  >
+                    {documentTitle(linkedNod)}
+                  </Link>
+                  <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[linkedNod.status]}`}>
+                    {STATUS_LABEL[linkedNod.status]}
+                  </span>
+                  {linkedNod.content.daysDelayed && (
+                    <span className="text-xs text-slate-500">
+                      Days delayed: {linkedNod.content.daysDelayed}
+                    </span>
+                  )}
+                </div>
+                {linkedNod.content.cause && (
+                  <p className="mt-1 line-clamp-2 text-slate-700">{linkedNod.content.cause}</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">No NOD linked.</p>
+            )}
+          </div>
+        )}
+
+        <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Variation
+            </p>
+            <LinkVariationForm
+              documentId={docId}
+              currentId={doc.variationId}
+              locked={doc.kind !== "rfi"}
+              options={variations.map((v) => ({
+                id: v.id,
+                label: `${variationTitle(v)} — ${v.description.slice(0, 60)}`,
+              }))}
+            />
+            {linkedVariation && (
+              <div className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{variationTitle(linkedVariation)}</span>
+                  <span
+                    className={`rounded px-2 py-0.5 text-xs ${VARIATION_STATUS_CLASS[linkedVariation.status]}`}
+                  >
+                    {VARIATION_STATUS_LABEL[linkedVariation.status]}
+                  </span>
+                </div>
+                <p className="mt-1 text-slate-700">{linkedVariation.description}</p>
+                <dl className="mt-2 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+                  <div>
+                    <dt className="text-slate-500">Claimed value (ex. GST)</dt>
+                    <dd>{formatMoney(linkedVariation.claimedValueCents)}</dd>
+                  </div>
+                  {linkedVariation.status === "approved" && (
+                    <div>
+                      <dt className="text-slate-500">Approved value (ex. GST)</dt>
+                      <dd>{formatMoney(linkedVariation.approvedValueCents)}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-slate-500">Time impact (days)</dt>
+                    <dd>{linkedVariation.timeImpactDays ?? "—"}</dd>
+                  </div>
+                  {linkedVariation.decidedAt && (
+                    <div>
+                      <dt className="text-slate-500">Decided</dt>
+                      <dd>{linkedVariation.decidedAt.toLocaleDateString("en-AU")}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+          </div>
+
+        {doc.kind === "rfi" && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Notices of Delay
+            </p>
+            {linkedNods.length === 0 ? (
+              <p className="text-sm text-slate-500">No NOD references this RFI.</p>
+            ) : (
+              <ul className="space-y-2">
+                {linkedNods.map((n) => (
+                  <li key={n.id} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/contractflow/${jobId}/doc/${n.id}`}
+                        className="font-medium text-blue-700 underline"
+                      >
+                        {documentTitle(n)}
+                      </Link>
+                      <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[n.status]}`}>
+                        {STATUS_LABEL[n.status]}
+                      </span>
+                      {n.content.daysDelayed && (
+                        <span className="text-xs text-slate-500">
+                          Days delayed: {n.content.daysDelayed}
+                        </span>
+                      )}
+                    </div>
+                    {n.content.cause && (
+                      <p className="mt-1 line-clamp-2 text-slate-700">{n.content.cause}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+        {doc.kind === "nod" && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Extensions of Time
+            </p>
+            {linkedEots.length === 0 ? (
+              <p className="text-sm text-slate-500">No EOT references this NOD.</p>
+            ) : (
+              <ul className="space-y-2">
+                {linkedEots.map((e) => (
+                  <li key={e.id} className="rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/contractflow/${jobId}/doc/${e.id}`}
+                        className="font-medium text-blue-700 underline"
+                      >
+                        {documentTitle(e)}
+                      </Link>
+                      <span className={`rounded px-2 py-0.5 text-xs ${STATUS_CLASS[e.status]}`}>
+                        {STATUS_LABEL[e.status]}
+                      </span>
+                      {e.daysClaimed != null && (
+                        <span className="text-xs text-slate-500">
+                          Days claimed: {e.daysClaimed}
+                        </span>
+                      )}
+                      {e.adjustedPcDate && (
+                        <span className="text-xs text-slate-500">
+                          Adjusted PC: {formatIsoDate(e.adjustedPcDate)}
+                        </span>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
       </section>
 
       {photos.length > 0 && (

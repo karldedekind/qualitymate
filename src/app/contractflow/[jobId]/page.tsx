@@ -8,8 +8,14 @@ import {
   listForJob,
 } from "@/lib/contract-documents";
 import { findJobById, listJobContractFiles } from "@/lib/jobs";
+import {
+  contractSumSummary,
+  listVariationFilesForJob,
+  listVariationsForJob,
+} from "@/lib/variations";
 import { STATUS_CLASS, STATUS_LABEL, formatIsoDate, formatMoney } from "../format";
 import { ContractForm } from "./contract-form";
+import { VariationsPanel } from "./variations-panel";
 
 export const dynamic = "force-dynamic";
 
@@ -91,10 +97,13 @@ export default async function JobRegisterPage({
   const job = await findJobById(jobId);
   if (!job) notFound();
 
-  const [contractFiles, docs, adjustedPc] = await Promise.all([
+  const [contractFiles, docs, adjustedPc, variations, variationFiles, sums] = await Promise.all([
     listJobContractFiles(jobId),
     listForJob(jobId),
     currentAdjustedPcDate(jobId),
+    listVariationsForJob(jobId),
+    listVariationFilesForJob(jobId),
+    contractSumSummary(jobId),
   ]);
   const rfis = docs.filter((d) => d.kind === "rfi");
   const nods = docs.filter((d) => d.kind === "nod");
@@ -124,7 +133,11 @@ export default async function JobRegisterPage({
           <p className="text-xs uppercase tracking-wide text-slate-500">
             Current contract sum (ex. GST)
           </p>
-          <p className="mt-1 text-lg font-semibold">{formatMoney(job.contractSumCents)}</p>
+          <p className="mt-1 text-lg font-semibold">{formatMoney(sums.currentCents)}</p>
+          <p className="text-xs text-slate-500">
+            Original {formatMoney(sums.originalCents)} · Variations{" "}
+            {formatMoney(sums.approvedVariationsCents)}
+          </p>
         </div>
       </section>
 
@@ -149,6 +162,17 @@ export default async function JobRegisterPage({
         <DocTable jobId={jobId} docs={nods} title="Notices of Delay" />
         <DocTable jobId={jobId} docs={eots} title="Extensions of Time" />
       </section>
+
+      <VariationsPanel
+        jobId={jobId}
+        variations={variations}
+        files={variationFiles.map((f) => ({
+          id: f.id,
+          variationId: f.variationId,
+          path: f.path,
+          originalFilename: f.originalFilename,
+        }))}
+      />
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

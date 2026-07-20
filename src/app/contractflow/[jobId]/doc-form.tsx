@@ -15,6 +15,7 @@ type Props = {
   dayBasis?: "ordinary" | "working" | null;
   rfiOptions: LinkOption[];
   nodOptions: LinkOption[];
+  variationOptions: LinkOption[];
 } & (
   | { mode: "create" }
   | {
@@ -27,6 +28,7 @@ type Props = {
         adjustedPcDate: string | null;
         rfiId: string | null;
         nodId: string | null;
+        variationId: string | null;
       };
     }
 );
@@ -180,6 +182,12 @@ export function DocForm(props: Props) {
             options={props.rfiOptions}
             defaultValue={initial?.rfiId}
           />
+          <LinkSelect
+            name="variationId"
+            label="Linked variation"
+            options={props.variationOptions}
+            defaultValue={initial?.variationId}
+          />
           {props.mode === "create" && (
             <label className="block rounded-md border border-slate-200 bg-slate-50 p-3 text-sm">
               <span className="font-medium text-slate-700">Attachments</span>
@@ -242,6 +250,12 @@ export function DocForm(props: Props) {
             label="NOD reference"
             options={props.nodOptions}
             defaultValue={initial?.nodId}
+          />
+          <LinkSelect
+            name="variationId"
+            label="Linked variation"
+            options={props.variationOptions}
+            defaultValue={initial?.variationId}
           />
         </>
       )}

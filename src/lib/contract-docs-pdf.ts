@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { db } from "@/db";
-import { contractDocuments, jobs, user } from "@/db/schema";
+import { type ContractDocContent, contractDocuments, jobs, user, variations } from "@/db/schema";
 import { getBranding } from "@/lib/branding";
 import type { ContractDocument } from "@/lib/contract-documents";
 import { documentTitle, listDocFiles } from "@/lib/contract-documents";
@@ -36,6 +36,18 @@ const DOC_BANNER: Record<ContractDocument["kind"], string> = {
 function num(n: number | null): string {
   return n == null ? "—" : String(n);
 }
+
+function money(cents: number | null): string {
+  if (cents == null) return "—";
+  return (cents / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
+}
+
+const VARIATION_STATUS_LABEL: Record<LinkedVariation["status"], string> = {
+  proposed: "Proposed",
+  submitted: "Submitted",
+  approved: "Approved",
+  rejected: "Rejected",
+};
 
 /** Long-text field: bold muted title over a matching rule, then the value
  * paragraph. A tier below sectionHeadingBox but clearly heavier than body text. */
@@ -157,19 +169,36 @@ function signatureBlock(
   doc.moveDown(0.8);
 }
 
+type LinkedVariation = {
+  number: number;
+  description: string;
+  status: "proposed" | "submitted" | "approved" | "rejected";
+  claimedValueCents: number | null;
+  approvedValueCents: number | null;
+  timeImpactDays: number | null;
+  decidedAt: Date | null;
+};
+
+type LinkedNod = {
+  number: number | null;
+  content: ContractDocContent;
+};
+
 type LinkedRefs = {
   rfiNumber: number | null;
   nodNumber: number | null;
-  linkedNodNumbers: number[];
+  linkedNods: LinkedNod[];
   linkedEotNumbers: number[];
+  variation: LinkedVariation | null;
 };
 
 async function resolveLinks(docRow: ContractDocument): Promise<LinkedRefs> {
   const refs: LinkedRefs = {
     rfiNumber: null,
     nodNumber: null,
-    linkedNodNumbers: [],
+    linkedNods: [],
     linkedEotNumbers: [],
+    variation: null,
   };
   if (docRow.rfiId) {
     const r = await db
@@ -187,12 +216,24 @@ async function resolveLinks(docRow: ContractDocument): Promise<LinkedRefs> {
       .limit(1);
     refs.nodNumber = r[0]?.number ?? null;
   }
+  if (docRow.variationId) {
+    const r = await db
+      .select()
+      .from(variations)
+      .where(eq(variations.id, docRow.variationId))
+      .limit(1);
+    refs.variation = r[0] ?? null;
+  }
   if (docRow.kind === "rfi") {
     const nods = await db
-      .select({ id: contractDocuments.id, number: contractDocuments.number })
+      .select({
+        id: contractDocuments.id,
+        number: contractDocuments.number,
+        content: contractDocuments.content,
+      })
       .from(contractDocuments)
       .where(and(eq(contractDocuments.kind, "nod"), eq(contractDocuments.rfiId, docRow.id)));
-    refs.linkedNodNumbers = nods.map((n) => n.number).filter((n): n is number => n != null);
+    refs.linkedNods = nods.map((n) => ({ number: n.number, content: n.content }));
 
     const nodIds = nods.map((n) => n.id);
     const eotWhere =
@@ -256,6 +297,8 @@ export async function renderContractDocPdf(
   ];
   if (docRow.kind === "nod") metaRows.splice(1, 0, ["RFI Reference", num(links.rfiNumber)]);
   if (docRow.kind === "eot") metaRows.splice(1, 0, ["NOD Reference", num(links.nodNumber)]);
+  if (docRow.kind !== "rfi" && links.variation != null)
+    metaRows.splice(2, 0, ["Variation Reference", num(links.variation.number)]);
   if (docRow.currentVersion > 1) {
     metaRows.push(["Revision", `V${docRow.currentVersion}`]);
   }
@@ -341,15 +384,43 @@ export async function renderContractDocPdf(
   }
 
   if (docRow.kind === "rfi") {
-    const linked: [string, string][] = [];
-    if (links.linkedNodNumbers.length > 0)
-      linked.push(["Linked NOD", links.linkedNodNumbers.join(", ")]);
-    if (links.linkedEotNumbers.length > 0)
-      linked.push(["Linked EOT", links.linkedEotNumbers.join(", ")]);
-    if (linked.length > 0) {
+    const hasLinks =
+      links.variation != null || links.linkedNods.length > 0 || links.linkedEotNumbers.length > 0;
+    if (hasLinks) {
       ensureSpace(doc, 80);
       sectionHeadingBox(doc, "Linked documents", accent);
-      drawMetaPanel(doc, linked);
+
+      if (links.variation) {
+        const v = links.variation;
+        const vRows: [string, string][] = [
+          ["Linked Variation", `Variation ${String(v.number).padStart(2, "0")}`],
+          ["Status", VARIATION_STATUS_LABEL[v.status]],
+          ["Claimed value (ex. GST)", money(v.claimedValueCents)],
+        ];
+        if (v.status === "approved")
+          vRows.push(["Approved value (ex. GST)", money(v.approvedValueCents)]);
+        if (v.timeImpactDays != null) vRows.push(["Time impact (days)", String(v.timeImpactDays)]);
+        if (v.decidedAt) vRows.push(["Decided", formatDate(v.decidedAt)]);
+        ensureSpace(doc, 130);
+        drawMetaPanel(doc, vRows);
+        doc.moveDown(0.4);
+        fieldBlock(doc, "Variation description", v.description);
+      }
+
+      for (const n of links.linkedNods) {
+        const nRows: [string, string][] = [["Linked NOD", `NOD ${num(n.number)}`]];
+        if (n.content.daysDelayed) nRows.push(["Days delayed", n.content.daysDelayed]);
+        if (n.content.datesOccurred) nRows.push(["Date(s) occurred", n.content.datesOccurred]);
+        ensureSpace(doc, 100);
+        drawMetaPanel(doc, nRows);
+        doc.moveDown(0.4);
+        if (n.content.cause) fieldBlock(doc, `NOD ${num(n.number)} — cause of delay`, n.content.cause);
+      }
+
+      if (links.linkedEotNumbers.length > 0) {
+        ensureSpace(doc, 50);
+        drawMetaPanel(doc, [["Linked EOT", links.linkedEotNumbers.join(", ")]]);
+      }
       doc.moveDown(1);
     }
   }

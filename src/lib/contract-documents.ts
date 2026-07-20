@@ -123,6 +123,23 @@ export async function updateDraft(
   return row ?? null;
 }
 
+/**
+ * Set or clear a document's linked variation. Unlike draft fields this is
+ * allowed at any status — variations are typically raised after the RFI has
+ * already been issued. The printed PDF picks the link up on the next re-issue.
+ */
+export async function linkVariation(
+  id: string,
+  variationId: string | null,
+): Promise<ContractDocument | null> {
+  const [row] = await db
+    .update(contractDocuments)
+    .set({ variationId, updatedAt: new Date() })
+    .where(eq(contractDocuments.id, id))
+    .returning();
+  return row ?? null;
+}
+
 export async function deleteDraft(id: string): Promise<void> {
   const doc = await findById(id);
   if (!doc) return;

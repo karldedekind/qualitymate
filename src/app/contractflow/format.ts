@@ -20,6 +20,10 @@ export const STATUS_CLASS: Record<ContractDocument["status"], string> = {
   acknowledged: "bg-green-100 text-green-800",
 };
 
+export function variationTitle(v: { number: number }): string {
+  return `Variation ${String(v.number).padStart(2, "0")}`;
+}
+
 export function formatMoney(cents: number | null): string {
   if (cents == null) return "—";
   return (cents / 100).toLocaleString("en-AU", { style: "currency", currency: "AUD" });
