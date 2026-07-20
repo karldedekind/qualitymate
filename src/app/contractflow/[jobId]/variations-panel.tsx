@@ -3,11 +3,13 @@
 import { useRef, useState } from "react";
 import type { Variation } from "@/lib/variations";
 import {
+  batchCreateVariationsAction,
   createVariationAction,
   extractVariationDetailsAction,
   setVariationStatusAction,
   uploadVariationFileAction,
 } from "../actions";
+import type { BatchVariationResult } from "../actions";
 import { formatMoney, variationTitle } from "../format";
 
 const V_STATUS_LABEL: Record<Variation["status"], string> = {
@@ -154,6 +156,86 @@ function VariationRow({ v, files }: { v: PlainVariation; files: PlainVariationFi
         {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
       </td>
     </tr>
+  );
+}
+
+function BatchUploadPanel({ jobId }: { jobId: string }) {
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<BatchVariationResult[] | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function onUpload() {
+    if (files.length === 0) return;
+    setBusy(true);
+    setError(null);
+    setResults(null);
+    const fd = new FormData();
+    for (const f of files) fd.append("files", f);
+    const result = await batchCreateVariationsAction(jobId, fd);
+    setBusy(false);
+    if ("error" in result) {
+      setError(result.error ?? "Upload failed.");
+      return;
+    }
+    setResults(result.results);
+    setFiles([]);
+    if (inputRef.current) inputRef.current.value = "";
+  }
+
+  return (
+    <div className="space-y-3 rounded-lg border border-slate-200 bg-white p-4 text-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="grow">
+          <span className="font-medium text-slate-700">Batch upload with AI</span>
+          <span className="block text-xs text-slate-500">
+            Select several variation documents (PDF or photo) — one variation is created per
+            file with AI-read details, and the document is attached. Each starts as Proposed
+            for review.
+          </span>
+          {files.length > 0 && (
+            <span className="block text-xs text-slate-600">
+              {files.length} file{files.length === 1 ? "" : "s"} selected:{" "}
+              {files.map((f) => f.name).join(", ")}
+            </span>
+          )}
+        </div>
+        <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs hover:bg-slate-100">
+          {files.length > 0 ? "Change files" : "Choose files"}
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg"
+            className="hidden"
+            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
+          />
+        </label>
+        <button
+          type="button"
+          onClick={onUpload}
+          disabled={busy || files.length === 0}
+          className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+        >
+          {busy
+            ? `Reading ${files.length} document${files.length === 1 ? "" : "s"}…`
+            : "✦ Upload & create with AI"}
+        </button>
+      </div>
+      {error && <p className="text-red-600">{error}</p>}
+      {results && (
+        <ul className="space-y-1 text-xs">
+          {results.map((r, i) => (
+            <li key={i} className={r.ok ? "text-green-700" : "text-red-600"}>
+              {r.ok
+                ? `✓ ${r.filename} → Variation ${r.number}: ${r.description}`
+                : `✗ ${r.filename}: ${r.error}`}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -345,6 +427,8 @@ export function VariationsPanel({
           {pending ? "Adding…" : "Add variation"}
         </button>
       </form>
+
+      <BatchUploadPanel jobId={jobId} />
 
       {variations.length === 0 ? (
         <p className="text-sm text-slate-500">No variations recorded.</p>

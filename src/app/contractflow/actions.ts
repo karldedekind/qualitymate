@@ -621,6 +621,135 @@ export async function extractVariationDetailsAction(formData: FormData) {
   return { extract: result.draft };
 }
 
+export type BatchVariationResult = {
+  filename: string;
+  ok: boolean;
+  /** Register number assigned to the created variation. */
+  number?: number;
+  description?: string;
+  error?: string;
+};
+
+const BATCH_VARIATION_MAX_FILES = 20;
+
+/**
+ * Batch upload: one variation document per file. Each file is AI-read, a
+ * variation is created from the extracted details (falling back to the
+ * filename as description), and the source document is attached to it.
+ * Created variations start as "proposed" so each can be reviewed, edited or
+ * deleted from the register afterwards. Files are processed independently —
+ * one bad file never blocks the rest.
+ */
+export async function batchCreateVariationsAction(jobId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const files = formData
+    .getAll("files")
+    .filter((f): f is File => f instanceof File && f.size > 0);
+  if (files.length === 0) return { error: "Choose at least one file." };
+  if (files.length > BATCH_VARIATION_MAX_FILES) {
+    return { error: `Too many files. Max ${BATCH_VARIATION_MAX_FILES} per batch.` };
+  }
+
+  const MEDIA: Record<string, "application/pdf" | "image/png" | "image/jpeg"> = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+  };
+
+  const { extractVariationDetails } = await import("@/lib/ai");
+  const { createVariation, addVariationFile } = await import("@/lib/variations");
+
+  const results: BatchVariationResult[] = [];
+  for (const file of files) {
+    const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+    const mediaType = MEDIA[ext];
+    if (!mediaType) {
+      results.push({
+        filename: file.name,
+        ok: false,
+        error: "AI can read PDF, PNG or JPG variation documents only.",
+      });
+      continue;
+    }
+    if (file.size > DOC_FILE_MAX) {
+      results.push({
+        filename: file.name,
+        ok: false,
+        error: `Too large. Max ${Math.round(DOC_FILE_MAX / 1024 / 1024)} MB.`,
+      });
+      continue;
+    }
+
+    const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+    const extracted = await extractVariationDetails([{ filename: file.name, mediaType, base64 }]);
+    if (!extracted.ok) {
+      results.push({ filename: file.name, ok: false, error: extracted.error });
+      continue;
+    }
+    const e = extracted.draft;
+
+    const input = {
+      jobId,
+      description: e.description?.trim() || file.name,
+      claimedValueCents:
+        e.claimedValueDollars != null ? Math.round(e.claimedValueDollars * 100) : null,
+      timeImpactDays: e.timeImpactDays ?? null,
+      createdBy: admin.id,
+    };
+    let v;
+    try {
+      try {
+        v = await createVariation({ ...input, number: e.number ?? null });
+      } catch {
+        // Extracted number already taken (or invalid) — fall back to the
+        // next free number rather than failing the file.
+        v = await createVariation({ ...input, number: null });
+      }
+    } catch (err) {
+      results.push({
+        filename: file.name,
+        ok: false,
+        error: err instanceof Error ? err.message : "Could not create the variation.",
+      });
+      continue;
+    }
+
+    try {
+      const saved = await saveFile(`variation-files/${v.id}`, file, {
+        allowedExt: DOC_FILE_EXT,
+        maxBytes: DOC_FILE_MAX,
+      });
+      await addVariationFile({
+        variationId: v.id,
+        path: saved.path,
+        originalFilename: saved.originalFilename,
+        uploadedBy: admin.id,
+      });
+    } catch {
+      // Variation is created; a failed attachment can be re-added from the row.
+    }
+
+    await record({
+      actor: { id: admin.id, email: admin.email },
+      action: "variation.create",
+      entity: { type: "variation", id: v.id },
+      after: { jobId, number: v.number, source: "batch-ai" },
+      request: meta,
+    });
+    results.push({
+      filename: file.name,
+      ok: true,
+      number: v.number,
+      description: v.description,
+    });
+  }
+
+  revalidatePath(`/contractflow/${jobId}`);
+  return { results };
+}
+
 const VariationStatusSchema = z.object({
   status: z.enum(["proposed", "submitted", "approved", "rejected", "deleted"]),
   approvedValueDollars: z.coerce.number().optional(),
