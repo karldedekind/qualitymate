@@ -49,6 +49,7 @@ afterAll(async () => {
 beforeEach(async () => {
   const { db } = await import("@/db");
   const { sql } = await import("drizzle-orm");
+  await db.execute(sql`TRUNCATE "communications" CASCADE`);
   await db.execute(sql`TRUNCATE "contract_documents" CASCADE`);
   await db.execute(sql`TRUNCATE "jobs" CASCADE`);
   await db.execute(sql`TRUNCATE "settings"`);
@@ -101,11 +102,20 @@ describe("issueAndDistribute", () => {
     expect(mail.to).toBe("dean@example.com");
     expect(mail.subject).toBe("J1474 - Mundubbera SC - RFI 01");
     expect(mail.attachments[0]!.filename).toBe("RFI 01 - Mundubbera SC.pdf");
+
+    const { listCommunicationsForJob } = await import("@/lib/communications");
+    const comms = await listCommunicationsForJob(job.id);
+    expect(comms).toHaveLength(1);
+    expect(comms[0]!.direction).toBe("outbound");
+    expect(comms[0]!.documentId).toBe(draft.id);
+    expect(comms[0]!.subject).toBe("J1474 - Mundubbera SC - RFI 01");
+    expect(comms[0]!.note).toBe("Emailed to dean@example.com");
   });
 
-  it("issue succeeds with an emailError when no rep email is set", async () => {
+  it("issue succeeds with an emailError when no rep email is set; no Communication logged", async () => {
     const { createDraft } = await import("@/lib/contract-documents");
     const { issueAndDistribute } = await import("@/lib/contract-issue");
+    const { listCommunicationsForJob } = await import("@/lib/communications");
 
     const { job, user: u } = await makeJob(null);
     const draft = await createDraft({ jobId: job.id, kind: "nod", createdBy: u.id, content: {} });
@@ -115,6 +125,7 @@ describe("issueAndDistribute", () => {
     expect(outcome.doc.number).toBe(1);
     expect(outcome.emailSent).toBe(false);
     expect(outcome.emailError).toMatch(/representative email/i);
+    expect(await listCommunicationsForJob(job.id)).toHaveLength(0);
   });
 
   it("refuses to issue when the issuer has no stored signature", async () => {

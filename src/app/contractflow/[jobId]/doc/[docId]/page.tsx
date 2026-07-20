@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/auth-helpers";
+import { listCommunicationsForDocument } from "@/lib/communications";
 import {
   documentTitle,
   findById,
@@ -10,6 +11,8 @@ import {
 } from "@/lib/contract-documents";
 import { findJobById } from "@/lib/jobs";
 import { listVariationsForJob } from "@/lib/variations";
+import { CommList } from "../../../comm-list";
+import { CommForm } from "../../comm-form";
 import {
   STATUS_CLASS,
   STATUS_LABEL,
@@ -58,11 +61,12 @@ export default async function DocDetailPage({
   const [job, doc] = await Promise.all([findJobById(jobId), findById(docId)]);
   if (!job || !doc || doc.jobId !== jobId) notFound();
 
-  const [versions, files, variations, jobDocs] = await Promise.all([
+  const [versions, files, variations, jobDocs, comms] = await Promise.all([
     listVersions(docId),
     listDocFiles(docId),
     listVariationsForJob(jobId),
     listForJob(jobId),
+    listCommunicationsForDocument(docId),
   ]);
   const linkedVariation = variations.find((v) => v.id === doc.variationId) ?? null;
   const linkedNods = jobDocs.filter((d) => d.kind === "nod" && d.rfiId === docId);
@@ -429,6 +433,20 @@ export default async function DocDetailPage({
               </li>
             ))}
           </ul>
+        </section>
+      )}
+
+      {doc.currentVersion > 0 && (
+        <section className="space-y-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Communications
+          </h2>
+          <p className="text-sm text-slate-600">
+            Correspondence about {documentTitle(doc)} — logged here, it also appears in the
+            job&apos;s register.
+          </p>
+          <CommForm jobId={jobId} documents={[]} fixedDocumentId={docId} />
+          <CommList comms={comms} emptyText="No communications logged for this document." />
         </section>
       )}
 

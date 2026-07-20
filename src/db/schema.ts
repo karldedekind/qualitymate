@@ -476,6 +476,25 @@ export const variationFiles = pgTable("variation_files", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+export const communications = pgTable("communications", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id, { onDelete: "restrict" }),
+  documentId: text("document_id").references(() => contractDocuments.id, {
+    onDelete: "set null",
+  }),
+  variationId: text("variation_id").references(() => variations.id, { onDelete: "set null" }),
+  direction: text("direction").notNull(), // 'inbound' | 'outbound'
+  subject: text("subject").notNull(),
+  occurredAt: timestamp("occurred_at").notNull(),
+  path: text("path"),
+  originalFilename: text("original_filename"),
+  note: text("note"),
+  createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 export const setupState = pgTable("setup_state", {
   id: integer("id").primaryKey().default(1),
   step: text("step").notNull().default("welcome"),

@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { jobs, user } from "@/db/schema";
+import { logCommunication } from "@/lib/communications";
 import { renderContractDocPdf } from "@/lib/contract-docs-pdf";
 import {
   type ContractDocument,
@@ -32,8 +33,9 @@ export function issuedPdfFilename(
 }
 
 /**
- * Issue a draft, then email the generated PDF to the Job's Principal's rep.
- * Email failure never rolls back the issue — the document is contractually
+ * Issue a draft, then email the generated PDF to the Job's Principal's rep and
+ * auto-record the send as an outbound Communication. Email failure never rolls
+ * back the issue — the document is contractually
  * issued either way; the caller surfaces `emailError` so the user can send
  * manually.
  */
@@ -107,6 +109,17 @@ export async function issueAndDistribute(
     return { doc, pdfPath: current.pdfPath, emailSent: false, emailError: result.error };
   }
 
+  await logCommunication({
+    jobId: doc.jobId,
+    direction: "outbound",
+    subject,
+    occurredAt: new Date(),
+    path: current.pdfPath,
+    originalFilename: filename,
+    documentId: doc.id,
+    note: `Emailed to ${job.principalRepEmail}`,
+    createdBy: issuedBy,
+  });
   return { doc, pdfPath: current.pdfPath, emailSent: true, emailError: null };
 }
 

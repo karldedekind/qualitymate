@@ -7,13 +7,16 @@ import {
   documentTitle,
   listForJob,
 } from "@/lib/contract-documents";
+import { listCommunicationsForJob } from "@/lib/communications";
 import { findJobById, listJobContractFiles } from "@/lib/jobs";
 import {
   contractSumSummary,
   listVariationFilesForJob,
   listVariationsForJob,
 } from "@/lib/variations";
+import { CommList } from "../comm-list";
 import { STATUS_CLASS, STATUS_LABEL, formatIsoDate, formatMoney } from "../format";
+import { CommForm } from "./comm-form";
 import { ContractForm } from "./contract-form";
 import { VariationsPanel } from "./variations-panel";
 
@@ -97,14 +100,17 @@ export default async function JobRegisterPage({
   const job = await findJobById(jobId);
   if (!job) notFound();
 
-  const [contractFiles, docs, adjustedPc, variations, variationFiles, sums] = await Promise.all([
-    listJobContractFiles(jobId),
-    listForJob(jobId),
-    currentAdjustedPcDate(jobId),
-    listVariationsForJob(jobId),
-    listVariationFilesForJob(jobId),
-    contractSumSummary(jobId),
-  ]);
+  const [contractFiles, docs, adjustedPc, variations, variationFiles, sums, comms] =
+    await Promise.all([
+      listJobContractFiles(jobId),
+      listForJob(jobId),
+      currentAdjustedPcDate(jobId),
+      listVariationsForJob(jobId),
+      listVariationFilesForJob(jobId),
+      contractSumSummary(jobId),
+      listCommunicationsForJob(jobId),
+    ]);
+  const issuedDocs = docs.filter((d) => d.currentVersion > 0);
   const rfis = docs.filter((d) => d.kind === "rfi");
   const nods = docs.filter((d) => d.kind === "nod");
   const eots = docs.filter((d) => d.kind === "eot");
@@ -173,6 +179,17 @@ export default async function JobRegisterPage({
           originalFilename: f.originalFilename,
         }))}
       />
+
+      <section className="space-y-3">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+          Communications
+        </h2>
+        <CommForm
+          jobId={jobId}
+          documents={issuedDocs.map((d) => ({ id: d.id, label: documentTitle(d) }))}
+        />
+        <CommList comms={comms} emptyText="No communications logged." />
+      </section>
 
       <section className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">

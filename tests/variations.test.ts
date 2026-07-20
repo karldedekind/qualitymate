@@ -34,6 +34,7 @@ afterAll(async () => {
 beforeEach(async () => {
   const { db } = await import("@/db");
   const { sql } = await import("drizzle-orm");
+  await db.execute(sql`TRUNCATE "communications" CASCADE`);
   await db.execute(sql`TRUNCATE "variations" CASCADE`);
   await db.execute(sql`TRUNCATE "jobs" CASCADE`);
   await db.execute(sql`TRUNCATE "session" CASCADE`);
@@ -154,5 +155,42 @@ describe("variations", () => {
     });
     await deleteVariation(gone.id);
     expect(await findVariationById(gone.id)).toBeNull();
+  });
+
+  it("communications: log + list for job and document, newest first", async () => {
+    const { logCommunication, listCommunicationsForJob, listCommunicationsForDocument } =
+      await import("@/lib/communications");
+    const { createDraft } = await import("@/lib/contract-documents");
+    const { job, user } = await makeJob("J2007");
+    const doc = await createDraft({ jobId: job.id, kind: "rfi", createdBy: user.id, content: {} });
+
+    await logCommunication({
+      jobId: job.id,
+      direction: "inbound",
+      subject: "RE: RFI 002 - footpath & swale drain",
+      occurredAt: new Date("2026-06-01T03:00:00Z"),
+      path: "communications/abc.eml",
+      originalFilename: "reply.eml",
+      documentId: doc.id,
+      createdBy: user.id,
+    });
+    await logCommunication({
+      jobId: job.id,
+      direction: "outbound",
+      subject: "RFI 01 issued",
+      occurredAt: new Date("2026-05-27T03:00:00Z"),
+      createdBy: null,
+    });
+
+    const rows = await listCommunicationsForJob(job.id);
+    expect(rows).toHaveLength(2);
+    // newest first
+    expect(rows[0]!.subject).toContain("RFI 002");
+    expect(rows[0]!.documentId).toBe(doc.id);
+    expect(rows[1]!.direction).toBe("outbound");
+
+    const docRows = await listCommunicationsForDocument(doc.id);
+    expect(docRows).toHaveLength(1);
+    expect(docRows[0]!.subject).toContain("RFI 002");
   });
 });

@@ -635,6 +635,72 @@ export async function uploadVariationFileAction(variationId: string, formData: F
   return { ok: true as const };
 }
 
+// --- Communications ---
+
+const CommSchema = z.object({
+  subject: z.string().min(1, "Subject is required").max(500),
+  direction: z.enum(["inbound", "outbound"]),
+  occurredAt: z.string().min(1, "Date is required"),
+  note: z.string().max(2000).optional().or(z.literal("")),
+  documentId: z.string().optional().or(z.literal("")),
+});
+
+export async function logCommunicationAction(jobId: string, formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+  const parsed = CommSchema.safeParse({
+    subject: formData.get("subject"),
+    direction: formData.get("direction"),
+    occurredAt: formData.get("occurredAt"),
+    note: formData.get("note") ?? "",
+    documentId: formData.get("documentId") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+  const occurred = new Date(parsed.data.occurredAt);
+  if (Number.isNaN(occurred.getTime())) return { error: "Invalid date." };
+
+  let path: string | null = null;
+  let originalFilename: string | null = null;
+  const file = formData.get("file");
+  if (file instanceof File && file.size > 0) {
+    try {
+      const saved = await saveFile(`communications/${jobId}`, file, {
+        allowedExt: DOC_FILE_EXT,
+        maxBytes: DOC_FILE_MAX,
+      });
+      path = saved.path;
+      originalFilename = saved.originalFilename;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : "Upload failed." };
+    }
+  }
+
+  const { logCommunication } = await import("@/lib/communications");
+  const comm = await logCommunication({
+    jobId,
+    direction: parsed.data.direction,
+    subject: parsed.data.subject,
+    occurredAt: occurred,
+    path,
+    originalFilename,
+    note: parsed.data.note || null,
+    documentId: parsed.data.documentId || null,
+    createdBy: admin.id,
+  });
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "communication.log",
+    entity: { type: "communication", id: comm.id },
+    after: { jobId, subject: comm.subject },
+    request: meta,
+  });
+  revalidatePath(`/contractflow/${jobId}`);
+  if (comm.documentId) {
+    revalidatePath(`/contractflow/${jobId}/doc/${comm.documentId}`);
+  }
+  return { ok: true as const };
+}
+
 // --- Signature ---
 
 export async function saveSignatureAction(formData: FormData) {
