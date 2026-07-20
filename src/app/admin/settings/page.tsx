@@ -10,6 +10,7 @@ import { getDefaultDistributionList } from "@/lib/meetings";
 import { isMfaRequiredForAdmins } from "@/lib/mfa";
 import { AiKeyForm } from "./ai-key-form";
 import { BrandingForm } from "./branding-form";
+import { ContractorForm } from "./contractor-form";
 import { DeclarationsForm } from "./declarations-form";
 import { DistributionForm } from "./distribution-form";
 import { ManagementRepForm } from "./management-rep-form";
@@ -57,6 +58,12 @@ export default async function AdminSettingsPage() {
       get("s3.prefix"),
     ]);
 
+  const [contractorLegalName, contractorPhone, contractorEmail] = await Promise.all([
+    get(KNOWN_KEYS.CONTRACTOR_LEGAL_NAME),
+    get(KNOWN_KEYS.CONTRACTOR_PHONE),
+    get(KNOWN_KEYS.CONTRACTOR_EMAIL),
+  ]);
+
   const [host, port, smtpUser, password, fromEmail, secure] = await Promise.all([
     get("smtp.host"),
     get("smtp.port"),
@@ -76,6 +83,17 @@ export default async function AdminSettingsPage() {
       </section>
 
       <SettingsGroup heading="Branding & ISO 9001">
+        <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
+          <h3 className="text-lg font-medium mb-4">Contractor details (ContractFlow)</h3>
+          <ContractorForm
+            initial={{
+              legalName: contractorLegalName ?? "",
+              phone: contractorPhone ?? "",
+              email: contractorEmail ?? "",
+            }}
+          />
+        </section>
+
         <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
           <h3 className="text-lg font-medium mb-4">Branding</h3>
           <BrandingForm initial={branding} />
@@ -142,7 +160,8 @@ export default async function AdminSettingsPage() {
         <section className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm">
           <h3 className="text-lg font-medium mb-1">AI assistance (BYOK)</h3>
           <p className="text-slate-600 text-sm mb-4">
-            Optional. When configured, admins see a &ldquo;Suggest&rdquo; button on incident review.
+            Optional. When configured, admins see a &ldquo;Suggest&rdquo; button on incident review,
+            plus &ldquo;Populate with AI&rdquo; and rewrite helpers across ContractFlow.
             Suggestions never auto-apply — admins choose to accept each field.
           </p>
           <AiKeyForm hasKey={aiConfigured} />

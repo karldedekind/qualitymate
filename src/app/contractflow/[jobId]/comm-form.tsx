@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { logCommunicationAction } from "../actions";
+import { extractCommunicationDetailsAction, logCommunicationAction } from "../actions";
 
 type Fields = {
   subject: string;
@@ -24,9 +24,15 @@ export function CommForm({
   fixedDocumentId?: string;
 }) {
   const [values, setValues] = useState<Fields>(EMPTY);
+  const [fileName, setFileName] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const isEml = fileName?.toLowerCase().endsWith(".eml") ?? false;
 
   function set(name: keyof Fields, value: string) {
     setValues((v) => ({ ...v, [name]: value }));
@@ -37,6 +43,7 @@ export function CommForm({
     const formData = new FormData(e.currentTarget);
     setPending(true);
     setError(null);
+    setNotice(null);
     const result = await logCommunicationAction(jobId, formData);
     setPending(false);
     if (result?.error) {
@@ -44,7 +51,35 @@ export function CommForm({
       return;
     }
     setValues(EMPTY);
+    setFileName(null);
     formRef.current?.reset();
+  }
+
+  async function onExtract() {
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    setExtracting(true);
+    setError(null);
+    setNotice(null);
+    const fd = new FormData();
+    fd.set("file", file);
+    const result = await extractCommunicationDetailsAction(jobId, fd);
+    setExtracting(false);
+    if ("error" in result && result.error) {
+      setError(result.error);
+      return;
+    }
+    if ("extract" in result && result.extract) {
+      const e = result.extract;
+      setValues((v) => ({
+        subject: e.subject ?? v.subject,
+        direction: e.direction ?? v.direction,
+        occurredAt: e.occurredAt ?? v.occurredAt,
+        documentId: e.documentId ?? v.documentId,
+        note: e.note ?? v.note,
+      }));
+      setNotice("Details populated from the email — review and log.");
+    }
   }
 
   return (
@@ -111,7 +146,23 @@ export function CommForm({
         <div className="rounded-md border border-slate-200 bg-slate-50 p-3">
           <span className="font-medium text-slate-700">Email / file (optional)</span>
           <span className="block text-xs text-slate-500">.eml, .pdf, image or Office file.</span>
-          <input name="file" type="file" className="mt-2 w-full text-sm" />
+          <input
+            ref={fileRef}
+            name="file"
+            type="file"
+            className="mt-2 w-full text-sm"
+            onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
+          />
+          {isEml && (
+            <button
+              type="button"
+              onClick={onExtract}
+              disabled={extracting}
+              className="mt-2 rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+            >
+              {extracting ? "Reading email…" : "✦ Populate details with AI"}
+            </button>
+          )}
         </div>
         <label className="block sm:col-span-2">
           <span className="text-slate-600">Note (optional)</span>
@@ -124,6 +175,7 @@ export function CommForm({
         </label>
       </div>
       {error && <p className="mt-3 text-red-600">{error}</p>}
+      {notice && <p className="mt-3 text-green-700">{notice}</p>}
       <button
         type="submit"
         disabled={pending}

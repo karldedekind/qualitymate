@@ -400,7 +400,8 @@ export type DraftResult<T> =
 async function callJson<T>(
   schema: z.ZodType<T>,
   system: string,
-  userPrompt: string,
+  // A plain string, or Anthropic content blocks (e.g. document/image + text).
+  userPrompt: string | unknown[],
   transport: Transport,
 ): Promise<DraftResult<T>> {
   let apiKey: string | null;
@@ -613,4 +614,282 @@ export async function draftMeetingMinutes(
   }
   const hasNotes = input.rawNotes.trim().length > 0;
   return callJson(MinutesSchema, minutesSystem(hasNotes), buildMinutesPrompt(input), transport);
+}
+
+// --- ContractFlow: rewrite + document/email extraction ---
+
+const RewriteSchema = z.object({
+  rewrite: z.string().min(1).max(20_000),
+});
+
+const REWRITE_SYSTEM = `You rewrite draft text for a construction contractor's formal
+contract documents — Requests for Information (RFI), Notices of Delay (NOD), and
+Extension of Time (EOT) claims — sent to the Owner / Principal's representative.
+You are given the document kind and the specific field the text belongs to.
+
+Rewrite rules:
+- Preserve every technical fact, measurement, date, duration, and reference. Never
+  invent details, assumptions, or references that are not in the draft.
+- Formal, courteous, professional tone suitable for a contractual record.
+- Australian English spelling.
+- Keep it concise — tighten rambling phrasing, do not pad.
+- Keep the same overall structure (one question stays one question; a list stays a
+  list) and stay on the field's purpose.
+
+Respond with a single JSON object — no prose, no markdown, no code fences:
+{"rewrite": string}`;
+
+export type RewriteInput = {
+  /** Document kind, e.g. "Request for Information". */
+  docKind: string;
+  /** Field label the text belongs to, e.g. "The cause of delay". */
+  fieldLabel: string;
+  text: string;
+};
+
+/** Suggest a professional rewrite of a draft contract-document field. Never throws. */
+export async function rewriteContractField(
+  input: RewriteInput,
+  transport: Transport = defaultTransport,
+): Promise<DraftResult<{ rewrite: string }>> {
+  if (process.env.E2E === "1") {
+    return { ok: true, draft: { rewrite: `E2E professional rewrite of: ${input.text}`.slice(0, 2000) } };
+  }
+  return callJson(
+    RewriteSchema,
+    REWRITE_SYSTEM,
+    [
+      `Document kind: ${input.docKind}`,
+      `Field: ${input.fieldLabel}`,
+      ``,
+      `Draft text to rewrite:`,
+      ``,
+      input.text,
+    ].join("\n"),
+    transport,
+  );
+}
+
+const ContractExtractSchema = z.object({
+  principalName: z.string().max(200).nullable(),
+  principalTradingAs: z.string().max(200).nullable(),
+  principalRepName: z.string().max(200).nullable(),
+  principalRepPhone: z.string().max(50).nullable(),
+  principalRepEmail: z.string().max(200).nullable(),
+  contractDateForPc: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  contractSumDollars: z.number().min(0).nullable(),
+  dayBasis: z.enum(["ordinary", "working"]).nullable(),
+});
+
+export type ContractExtract = z.infer<typeof ContractExtractSchema>;
+
+const EXTRACT_SYSTEM = `You extract contract details for a construction contractor from
+uploaded contract source documents — a Letter of Acceptance (LOA), a Purchase Order (PO),
+a Principal's / Superintendent's Representative appointment document, and/or the
+Conditions of Contract (general and special conditions). The Conditions of Contract are
+the most authoritative source for the day basis and any contract-wide terms.
+
+Extraction rules:
+- Only report values that are actually stated in the documents. Use null for anything
+  not found — NEVER guess or invent a value.
+- principalName: the Owner / Principal legal entity the contractor is engaged by.
+- principalTradingAs: the project managers / trading name acting for the Principal, if distinct.
+- principalRepName / principalRepPhone / principalRepEmail: the named Principal's (or
+  Superintendent's) representative and their contact details.
+- contractDateForPc: the contract Date for Practical Completion as YYYY-MM-DD.
+- contractSumDollars: the original contract sum in AUD as a plain number (no symbols,
+  GST-exclusive if both are stated).
+- dayBasis: "working" if the contract counts working/business days, "ordinary" if it
+  counts ordinary/calendar days; null if the documents do not say.
+
+Respond with a single JSON object — no prose, no markdown, no code fences:
+{"principalName": string|null, "principalTradingAs": string|null, "principalRepName": string|null,
+"principalRepPhone": string|null, "principalRepEmail": string|null, "contractDateForPc": string|null,
+"contractSumDollars": number|null, "dayBasis": "ordinary"|"working"|null}`;
+
+export type ContractDocFile = {
+  filename: string;
+  mediaType: "application/pdf" | "image/png" | "image/jpeg";
+  base64: string;
+};
+
+function docContentBlocks(files: ContractDocFile[], instruction: string): unknown[] {
+  const content: unknown[] = files.map((f) =>
+    f.mediaType === "application/pdf"
+      ? {
+          type: "document",
+          source: { type: "base64", media_type: f.mediaType, data: f.base64 },
+          title: f.filename,
+        }
+      : {
+          type: "image",
+          source: { type: "base64", media_type: f.mediaType, data: f.base64 },
+        },
+  );
+  content.push({
+    type: "text",
+    text: `Documents supplied: ${files.map((f) => f.filename).join(", ")}. ${instruction}`,
+  });
+  return content;
+}
+
+/** Extract contract details from uploaded LOA / PO / rep-appointment documents. Never throws. */
+export async function extractContractDetails(
+  files: ContractDocFile[],
+  transport: Transport = defaultTransport,
+): Promise<DraftResult<ContractExtract>> {
+  if (process.env.E2E === "1") {
+    return {
+      ok: true,
+      draft: {
+        principalName: "E2E Principal Pty Ltd",
+        principalTradingAs: "E2E Project Managers",
+        principalRepName: "E2E Rep",
+        principalRepPhone: "0400 000 000",
+        principalRepEmail: "rep@example.com",
+        contractDateForPc: "2026-12-01",
+        contractSumDollars: 100000,
+        dayBasis: "working",
+      },
+    };
+  }
+  return callJson(
+    ContractExtractSchema,
+    EXTRACT_SYSTEM,
+    docContentBlocks(files, "Extract the contract details."),
+    transport,
+  );
+}
+
+const VariationExtractSchema = z.object({
+  number: z.number().int().min(1).nullable(),
+  description: z.string().max(5000).nullable(),
+  claimedValueDollars: z.number().nullable(),
+  timeImpactDays: z.number().int().nullable(),
+});
+
+export type VariationExtract = z.infer<typeof VariationExtractSchema>;
+
+const VARIATION_EXTRACT_SYSTEM = `You extract contract variation details for a construction
+contractor from an uploaded variation document — e.g. a variation request/quote, site
+instruction, or the Principal's variation direction.
+
+Extraction rules:
+- Only report values actually stated in the document. Use null for anything not
+  found — NEVER guess or invent a value.
+- number: the variation number stated on the document (e.g. "Variation 03" or "VO-3" → 3).
+- description: a SHORT headline of the varied work — one line, aim under 100 characters.
+  Prefer the document's own title or "Details" field, stripping boilerplate prefixes like
+  "New Variation -". NEVER concatenate line items, quantities, or cost-breakdown rows into
+  the description; the itemised costs belong to the document, not this field.
+- claimedValueDollars: the variation value in AUD as a plain number, GST-exclusive if
+  both are stated. Negative for credits/omissions.
+- timeImpactDays: the time impact in days if stated.
+
+Respond with a single JSON object — no prose, no markdown, no code fences:
+{"number": number|null, "description": string|null, "claimedValueDollars": number|null, "timeImpactDays": number|null}`;
+
+/** Extract variation details from an uploaded variation document. Never throws. */
+export async function extractVariationDetails(
+  files: ContractDocFile[],
+  transport: Transport = defaultTransport,
+): Promise<DraftResult<VariationExtract>> {
+  if (process.env.E2E === "1") {
+    return {
+      ok: true,
+      draft: {
+        number: 3,
+        description: "E2E extracted variation",
+        claimedValueDollars: 1234.5,
+        timeImpactDays: 5,
+      },
+    };
+  }
+  return callJson(
+    VariationExtractSchema,
+    VARIATION_EXTRACT_SYSTEM,
+    docContentBlocks(files, "Extract the variation details."),
+    transport,
+  );
+}
+
+const CommunicationExtractSchema = z.object({
+  subject: z.string().max(500).nullable(),
+  occurredAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .nullable(),
+  direction: z.enum(["inbound", "outbound"]).nullable(),
+  note: z.string().max(2000).nullable(),
+  documentId: z.string().nullable(),
+});
+
+export type CommunicationExtract = z.infer<typeof CommunicationExtractSchema>;
+
+const COMM_EXTRACT_SYSTEM = `You extract the details of a project email for a construction
+contractor's communications register. You are given the raw .eml content and context about
+the two parties.
+
+Extraction rules:
+- Only report what the email actually shows; null for anything not determinable.
+- subject: the email's Subject line (without Re:/Fwd: prefixes).
+- occurredAt: the email's Date header as YYYY-MM-DD.
+- direction: "outbound" if the contractor sent it, "inbound" if the contractor received it
+  from the Principal / project managers — judge from the From/To addresses against the
+  party context provided.
+- note: one short sentence summarising what the email is about.
+- documentId: if the email clearly concerns one of the listed register documents (matching
+  RFI/NOD/EOT numbering in the subject or body), its id from the list; otherwise null.
+  Never invent an id.
+
+Respond with a single JSON object — no prose, no markdown, no code fences:
+{"subject": string|null, "occurredAt": string|null, "direction": "inbound"|"outbound"|null, "note": string|null, "documentId": string|null}`;
+
+export type CommunicationExtractInput = {
+  emailText: string;
+  contractorEmail: string | null;
+  principalRepEmail: string | null;
+  documents: { id: string; label: string }[];
+};
+
+/** Extract communication log details from a raw .eml email. Never throws. */
+export async function extractCommunicationDetails(
+  input: CommunicationExtractInput,
+  transport: Transport = defaultTransport,
+): Promise<DraftResult<CommunicationExtract>> {
+  if (process.env.E2E === "1") {
+    return {
+      ok: true,
+      draft: {
+        subject: "E2E extracted subject",
+        occurredAt: "2026-07-01",
+        direction: "inbound",
+        note: "E2E summary.",
+        documentId: input.documents[0]?.id ?? null,
+      },
+    };
+  }
+  const docList =
+    input.documents.map((d) => `- ${d.id}: ${d.label}`).join("\n") || "(none)";
+  const prompt = [
+    `Party context:`,
+    `Contractor email: ${input.contractorEmail ?? "(unknown)"}`,
+    `Principal's representative email: ${input.principalRepEmail ?? "(unknown)"}`,
+    ``,
+    `Register documents (documentId must be one of these ids, or null):`,
+    docList,
+    ``,
+    `Raw email (.eml):`,
+    input.emailText,
+  ].join("\n");
+  const result = await callJson(CommunicationExtractSchema, COMM_EXTRACT_SYSTEM, prompt, transport);
+  if (result.ok && result.draft.documentId != null) {
+    // Guard against invented ids — the register select only accepts real ones.
+    const valid = input.documents.some((d) => d.id === result.draft.documentId);
+    if (!valid) result.draft.documentId = null;
+  }
+  return result;
 }

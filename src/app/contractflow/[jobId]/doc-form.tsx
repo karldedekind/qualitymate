@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ContractDocContent } from "@/db/schema";
-import { createDraftAction, updateDraftAction } from "../actions";
+import { createDraftAction, suggestRewriteAction, updateDraftAction } from "../actions";
 
 type Kind = "rfi" | "nod" | "eot";
 
@@ -39,30 +39,96 @@ const KIND_TITLE: Record<Kind, string> = {
   eot: "Extension of Time",
 };
 
-function TextField({
+/**
+ * Long-text field with an AI "professional rewrite" helper. Controlled so a
+ * suggested rewrite can replace the draft text in place; still posts as the
+ * plain named form field.
+ */
+function AiTextArea({
   name,
   label,
+  docKind,
   initial,
   rows = 6,
   hint,
 }: {
   name: string;
   label: string;
+  docKind: string;
   initial?: string;
   rows?: number;
   hint?: string;
 }) {
+  const [value, setValue] = useState(initial ?? "");
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function onSuggest() {
+    setPending(true);
+    setError(null);
+    setSuggestion(null);
+    const result = await suggestRewriteAction({ docKind, fieldLabel: label, text: value });
+    setPending(false);
+    if ("rewrite" in result && typeof result.rewrite === "string") {
+      setSuggestion(result.rewrite);
+    } else {
+      setError(("error" in result && result.error) || "Rewrite failed.");
+    }
+  }
+
   return (
-    <label className="block text-sm">
-      <span className="text-slate-600">{label}</span>
-      {hint && <span className="block text-xs text-slate-400">{hint}</span>}
-      <textarea
-        name={name}
-        rows={rows}
-        defaultValue={initial ?? ""}
-        className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
-      />
-    </label>
+    <div className="space-y-2">
+      <label className="block text-sm">
+        <span className="text-slate-600">{label}</span>
+        {hint && <span className="block text-xs text-slate-400">{hint}</span>}
+        <textarea
+          name={name}
+          rows={rows}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm"
+        />
+      </label>
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onSuggest}
+          disabled={pending || value.trim() === ""}
+          className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+        >
+          {pending ? "Thinking…" : "✦ Suggest professional rewrite"}
+        </button>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+      </div>
+      {suggestion && (
+        <div className="space-y-2 rounded-md border border-indigo-200 bg-indigo-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+            Suggested rewrite
+          </p>
+          <p className="whitespace-pre-wrap text-sm text-slate-800">{suggestion}</p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                setValue(suggestion);
+                setSuggestion(null);
+              }}
+              className="rounded-md bg-indigo-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-800"
+            >
+              Use rewrite
+            </button>
+            <button
+              type="button"
+              onClick={() => setSuggestion(null)}
+              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm hover:bg-slate-50"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -121,7 +187,13 @@ export function DocForm(props: Props) {
 
       {kind === "rfi" && (
         <>
-          <TextField name="question" label="Question" initial={initial?.content.question} rows={10} />
+          <AiTextArea
+            name="question"
+            label="Question"
+            docKind={KIND_TITLE.rfi}
+            initial={initial?.content.question}
+            rows={10}
+          />
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm">
               <span className="text-slate-600">Response required by</span>
@@ -163,16 +235,24 @@ export function DocForm(props: Props) {
 
       {kind === "nod" && (
         <>
-          <TextField name="cause" label="The cause of delay" initial={initial?.content.cause} rows={8} />
-          <TextField
+          <AiTextArea
+            name="cause"
+            label="The cause of delay"
+            docKind={KIND_TITLE.nod}
+            initial={initial?.content.cause}
+            rows={8}
+          />
+          <AiTextArea
             name="datesOccurred"
             label="Date(s) on which it occurred"
+            docKind={KIND_TITLE.nod}
             initial={initial?.content.datesOccurred}
             rows={4}
           />
-          <TextField
+          <AiTextArea
             name="daysDelayed"
             label="Number of days delayed"
+            docKind={KIND_TITLE.nod}
             initial={initial?.content.daysDelayed}
             rows={3}
           />
@@ -203,20 +283,28 @@ export function DocForm(props: Props) {
 
       {kind === "eot" && (
         <>
-          <TextField
+          <AiTextArea
             name="clausePreamble"
             label="Contractual basis of claim"
+            docKind={KIND_TITLE.eot}
             hint="Typed fresh for each claim, e.g. the Clause 17 preamble."
             initial={initial?.content.clausePreamble}
             rows={8}
           />
-          <TextField
+          <AiTextArea
             name="reasons"
             label="Reason(s) for delay and the date(s) on which it occurred"
+            docKind={KIND_TITLE.eot}
             initial={initial?.content.reasons}
             rows={8}
           />
-          <TextField name="request" label="Request" initial={initial?.content.request} rows={5} />
+          <AiTextArea
+            name="request"
+            label="Request"
+            docKind={KIND_TITLE.eot}
+            initial={initial?.content.request}
+            rows={5}
+          />
           <div className="grid gap-4 sm:grid-cols-3">
             <label className="block text-sm">
               <span className="text-slate-600">

@@ -406,3 +406,157 @@ describe("meeting-notes house style", () => {
     expect(body!.temperature).toBe(0);
   });
 });
+
+describe("ContractFlow AI helpers", () => {
+  it("rewriteContractField sends the doc kind and field label, returns the rewrite", async () => {
+    const { set } = await import("@/lib/settings");
+    await set("ai.anthropic_key", "sk-ant-stored");
+    const { rewriteContractField } = await import("@/lib/ai");
+    let userPrompt = "";
+    const transport: Transport = async (req) => {
+      const body = req.body as { messages: Array<{ content: string }> };
+      userPrompt = body.messages[0]!.content;
+      return okResponse(JSON.stringify({ rewrite: "We respectfully request…" }));
+    };
+    const r = await rewriteContractField(
+      { docKind: "Notice of Delay", fieldLabel: "The cause of delay", text: "rain, lots of it" },
+      transport,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.draft.rewrite).toBe("We respectfully request…");
+    expect(userPrompt).toContain("Notice of Delay");
+    expect(userPrompt).toContain("The cause of delay");
+    expect(userPrompt).toContain("rain, lots of it");
+  });
+
+  it("extractContractDetails sends PDF document blocks and preserves nulls", async () => {
+    const { set } = await import("@/lib/settings");
+    await set("ai.anthropic_key", "sk-ant-stored");
+    const { extractContractDetails } = await import("@/lib/ai");
+    let content: Array<{ type: string }> = [];
+    const transport: Transport = async (req) => {
+      const body = req.body as { messages: Array<{ content: Array<{ type: string }> }> };
+      content = body.messages[0]!.content;
+      return okResponse(
+        JSON.stringify({
+          principalName: "Acme Pty Ltd",
+          principalTradingAs: null,
+          principalRepName: null,
+          principalRepPhone: null,
+          principalRepEmail: null,
+          contractDateForPc: "2026-10-01",
+          contractSumDollars: 250000,
+          dayBasis: null,
+        }),
+      );
+    };
+    const r = await extractContractDetails(
+      [{ filename: "loa.pdf", mediaType: "application/pdf", base64: "aGk=" }],
+      transport,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.draft.principalName).toBe("Acme Pty Ltd");
+      expect(r.draft.principalRepEmail).toBeNull();
+      expect(r.draft.dayBasis).toBeNull();
+    }
+    expect(content.map((c) => c.type)).toEqual(["document", "text"]);
+  });
+
+  it("extractVariationDetails sends images as image blocks and parses the draft", async () => {
+    const { set } = await import("@/lib/settings");
+    await set("ai.anthropic_key", "sk-ant-stored");
+    const { extractVariationDetails } = await import("@/lib/ai");
+    let content: Array<{ type: string }> = [];
+    const transport: Transport = async (req) => {
+      const body = req.body as { messages: Array<{ content: Array<{ type: string }> }> };
+      content = body.messages[0]!.content;
+      return okResponse(
+        JSON.stringify({ number: 7, description: "Extra footings", claimedValueDollars: -1500, timeImpactDays: null }),
+      );
+    };
+    const r = await extractVariationDetails(
+      [{ filename: "vo7.jpg", mediaType: "image/jpeg", base64: "aGk=" }],
+      transport,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.draft.number).toBe(7);
+      expect(r.draft.claimedValueDollars).toBe(-1500);
+      expect(r.draft.timeImpactDays).toBeNull();
+    }
+    expect(content.map((c) => c.type)).toEqual(["image", "text"]);
+  });
+
+  it("extractCommunicationDetails includes party context and keeps a valid documentId", async () => {
+    const { set } = await import("@/lib/settings");
+    await set("ai.anthropic_key", "sk-ant-stored");
+    const { extractCommunicationDetails } = await import("@/lib/ai");
+    let userPrompt = "";
+    const transport: Transport = async (req) => {
+      const body = req.body as { messages: Array<{ content: string }> };
+      userPrompt = body.messages[0]!.content;
+      return okResponse(
+        JSON.stringify({
+          subject: "RFI 002 response",
+          occurredAt: "2026-07-01",
+          direction: "inbound",
+          note: "Response to RFI 002.",
+          documentId: "doc-1",
+        }),
+      );
+    };
+    const r = await extractCommunicationDetails(
+      {
+        emailText: "From: rep@principal.com\nSubject: RFI 002 response",
+        contractorEmail: "admin@contractor.com",
+        principalRepEmail: "rep@principal.com",
+        documents: [{ id: "doc-1", label: "RFI 002" }],
+      },
+      transport,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.draft.documentId).toBe("doc-1");
+    expect(userPrompt).toContain("admin@contractor.com");
+    expect(userPrompt).toContain("rep@principal.com");
+    expect(userPrompt).toContain("doc-1: RFI 002");
+  });
+
+  it("extractCommunicationDetails nulls a documentId the model invented", async () => {
+    const { set } = await import("@/lib/settings");
+    await set("ai.anthropic_key", "sk-ant-stored");
+    const { extractCommunicationDetails } = await import("@/lib/ai");
+    const transport: Transport = async () =>
+      okResponse(
+        JSON.stringify({
+          subject: "s",
+          occurredAt: null,
+          direction: null,
+          note: null,
+          documentId: "made-up-id",
+        }),
+      );
+    const r = await extractCommunicationDetails(
+      {
+        emailText: "From: someone@else.com",
+        contractorEmail: null,
+        principalRepEmail: null,
+        documents: [{ id: "doc-1", label: "RFI 002" }],
+      },
+      transport,
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.draft.documentId).toBeNull();
+  });
+
+  it("rewriteContractField returns NOT_CONFIGURED without a stored key", async () => {
+    const { rewriteContractField } = await import("@/lib/ai");
+    const transport: Transport = async () => okResponse(JSON.stringify({ rewrite: "x" }));
+    const r = await rewriteContractField(
+      { docKind: "Request for Information", fieldLabel: "Question", text: "hi" },
+      transport,
+    );
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.code).toBe("NOT_CONFIGURED");
+  });
+});

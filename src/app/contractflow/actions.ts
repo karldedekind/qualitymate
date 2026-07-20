@@ -454,6 +454,45 @@ export async function uploadJobContractFileAction(jobId: string, formData: FormD
   return { ok: true as const };
 }
 
+export async function extractJobContractAction(jobId: string) {
+  await requireAdmin();
+  const { readFile } = await import("node:fs/promises");
+  const { join, extname } = await import("node:path");
+  const { findJobById, listJobContractFiles } = await import("@/lib/jobs");
+  const { uploadsRoot } = await import("@/lib/uploads");
+  const { extractContractDetails } = await import("@/lib/ai");
+
+  const job = await findJobById(jobId);
+  if (!job) return { error: "Job not found." };
+  const files = await listJobContractFiles(jobId);
+  if (files.length === 0) {
+    return { error: "Upload the LOA, PO or representative document first." };
+  }
+
+  const MEDIA: Record<string, "application/pdf" | "image/png" | "image/jpeg"> = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+  };
+  const docs = [];
+  for (const f of files) {
+    const mediaType = MEDIA[extname(f.path).toLowerCase()];
+    if (!mediaType) continue;
+    try {
+      const bytes = await readFile(join(uploadsRoot(), f.path));
+      docs.push({ filename: f.originalFilename, mediaType, base64: bytes.toString("base64") });
+    } catch {
+      // Missing file on disk: skip rather than fail the whole extraction.
+    }
+  }
+  if (docs.length === 0) return { error: "None of the uploaded documents could be read." };
+
+  const result = await extractContractDetails(docs);
+  if (!result.ok) return { error: result.error };
+  return { extract: result.draft };
+}
+
 export async function linkVariationAction(documentId: string, formData: FormData) {
   const admin = await requireAdmin();
   const meta = await getRequestMeta();
@@ -554,6 +593,34 @@ export async function createVariationAction(jobId: string, formData: FormData) {
   return { ok: true as const };
 }
 
+/**
+ * AI-extract variation details from a document selected in the create form.
+ * The file is read in-memory only — nothing is stored and nothing is saved
+ * until the user reviews the populated fields and adds the variation.
+ */
+export async function extractVariationDetailsAction(formData: FormData) {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
+  const MEDIA: Record<string, "application/pdf" | "image/png" | "image/jpeg"> = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+  };
+  const ext = file.name.slice(file.name.lastIndexOf(".")).toLowerCase();
+  const mediaType = MEDIA[ext];
+  if (!mediaType) return { error: "AI can read PDF, PNG or JPG variation documents only." };
+  if (file.size > DOC_FILE_MAX) {
+    return { error: `${file.name}: too large. Max ${Math.round(DOC_FILE_MAX / 1024 / 1024)} MB.` };
+  }
+  const { extractVariationDetails } = await import("@/lib/ai");
+  const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
+  const result = await extractVariationDetails([{ filename: file.name, mediaType, base64 }]);
+  if (!result.ok) return { error: result.error };
+  return { extract: result.draft };
+}
+
 const VariationStatusSchema = z.object({
   status: z.enum(["proposed", "submitted", "approved", "rejected", "deleted"]),
   approvedValueDollars: z.coerce.number().optional(),
@@ -645,6 +712,43 @@ const CommSchema = z.object({
   documentId: z.string().optional().or(z.literal("")),
 });
 
+export async function extractCommunicationDetailsAction(jobId: string, formData: FormData) {
+  await requireAdmin();
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
+  if (!file.name.toLowerCase().endsWith(".eml")) {
+    return { error: "AI populate works with .eml email files." };
+  }
+  if (file.size > DOC_FILE_MAX) {
+    return { error: `${file.name}: too large. Max ${Math.round(DOC_FILE_MAX / 1024 / 1024)} MB.` };
+  }
+
+  const { findJobById } = await import("@/lib/jobs");
+  const { listForJob, documentTitle } = await import("@/lib/contract-documents");
+  const { KNOWN_KEYS, get } = await import("@/lib/settings");
+  const { extractCommunicationDetails } = await import("@/lib/ai");
+
+  const job = await findJobById(jobId);
+  if (!job) return { error: "Job not found." };
+  const [docs, contractorEmail] = await Promise.all([
+    listForJob(jobId),
+    get(KNOWN_KEYS.CONTRACTOR_EMAIL),
+  ]);
+
+  // Cap the raw MIME text; big base64 attachment bodies add nothing for extraction.
+  const emailText = (await file.text()).slice(0, 60_000);
+  const result = await extractCommunicationDetails({
+    emailText,
+    contractorEmail: contractorEmail ?? null,
+    principalRepEmail: job.principalRepEmail,
+    documents: docs
+      .filter((d) => d.number != null)
+      .map((d) => ({ id: d.id, label: documentTitle(d) })),
+  });
+  if (!result.ok) return { error: result.error };
+  return { extract: result.draft };
+}
+
 export async function logCommunicationAction(jobId: string, formData: FormData) {
   const admin = await requireAdmin();
   const meta = await getRequestMeta();
@@ -721,4 +825,27 @@ export async function saveSignatureAction(formData: FormData) {
   });
   revalidatePath("/contractflow/signature");
   return { ok: true as const };
+}
+
+const RewriteRequestSchema = z.object({
+  docKind: z.string().min(1).max(100),
+  fieldLabel: z.string().min(1).max(200),
+  text: z.string().min(1).max(20_000),
+});
+
+export async function suggestRewriteAction(input: {
+  docKind: string;
+  fieldLabel: string;
+  text: string;
+}) {
+  await requireAdmin();
+  const parsed = RewriteRequestSchema.safeParse({ ...input, text: input.text.trim() });
+  if (!parsed.success) return { error: "Write some text first." };
+  const { isConfigured, rewriteContractField } = await import("@/lib/ai");
+  if (!(await isConfigured())) {
+    return { error: "AI not configured. Add an Anthropic key in Settings." };
+  }
+  const result = await rewriteContractField(parsed.data);
+  if (!result.ok) return { error: result.error };
+  return { rewrite: result.draft.rewrite };
 }

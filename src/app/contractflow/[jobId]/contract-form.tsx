@@ -2,7 +2,11 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { updateJobContractAction, uploadJobContractFileAction } from "../actions";
+import {
+  extractJobContractAction,
+  updateJobContractAction,
+  uploadJobContractFileAction,
+} from "../actions";
 
 type Initial = {
   principalName: string;
@@ -60,6 +64,7 @@ export function ContractForm({
   const [sumFocused, setSumFocused] = useState(false);
   const [pending, setPending] = useState(false);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -98,6 +103,34 @@ export function ContractForm({
     }
     setUploading(null);
     router.refresh();
+  }
+
+  async function onExtract() {
+    setExtracting(true);
+    setError(null);
+    setNotice(null);
+    const result = await extractJobContractAction(jobId);
+    setExtracting(false);
+    if ("error" in result && result.error) {
+      setError(result.error);
+      return;
+    }
+    if ("extract" in result && result.extract) {
+      const e = result.extract;
+      setValues((v) => ({
+        ...v,
+        principalName: e.principalName ?? v.principalName,
+        principalTradingAs: e.principalTradingAs ?? v.principalTradingAs,
+        principalRepName: e.principalRepName ?? v.principalRepName,
+        principalRepPhone: e.principalRepPhone ?? v.principalRepPhone,
+        principalRepEmail: e.principalRepEmail ?? v.principalRepEmail,
+        contractDateForPc: e.contractDateForPc ?? v.contractDateForPc,
+        contractSumDollars:
+          e.contractSumDollars != null ? String(e.contractSumDollars) : v.contractSumDollars,
+        dayBasis: e.dayBasis ?? v.dayBasis,
+      }));
+      setNotice("Details populated from the documents — review and save.");
+    }
   }
 
   return (
@@ -141,6 +174,20 @@ export function ContractForm({
             </div>
           );
         })}
+      </div>
+
+      <div>
+        <button
+          type="button"
+          onClick={onExtract}
+          disabled={extracting || files.length === 0}
+          className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-sm font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+        >
+          {extracting ? "Reading documents…" : "✦ Populate contract details with AI"}
+        </button>
+        {files.length === 0 && (
+          <span className="ml-2 text-xs text-slate-400">Upload a document first.</span>
+        )}
       </div>
 
       <form onSubmit={onSubmit} className="border-t border-slate-100 pt-4">

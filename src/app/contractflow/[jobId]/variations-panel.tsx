@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import type { Variation } from "@/lib/variations";
 import {
   createVariationAction,
+  extractVariationDetailsAction,
   setVariationStatusAction,
   uploadVariationFileAction,
 } from "../actions";
@@ -190,8 +191,11 @@ export function VariationsPanel({
   const [values, setValues] = useState<NewVariation>(EMPTY_VARIATION);
   const [fileName, setFileName] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   function set(name: keyof NewVariation, value: string) {
     setValues((v) => ({ ...v, [name]: value }));
@@ -200,6 +204,7 @@ export function VariationsPanel({
   async function onCreate(formData: FormData) {
     setPending(true);
     setError(null);
+    setNotice(null);
     // Strip currency formatting so the server sees a plain number.
     formData.set("claimedValueDollars", values.claimedValueDollars.replace(/[^0-9.-]/g, ""));
     const result = await createVariationAction(jobId, formData);
@@ -211,6 +216,35 @@ export function VariationsPanel({
     setValues(EMPTY_VARIATION);
     setFileName(null);
     formRef.current?.reset();
+  }
+
+  async function onExtract() {
+    const file = fileRef.current?.files?.[0];
+    if (!file) return;
+    setExtracting(true);
+    setError(null);
+    setNotice(null);
+    const fd = new FormData();
+    fd.set("file", file);
+    const result = await extractVariationDetailsAction(fd);
+    setExtracting(false);
+    if ("error" in result && result.error) {
+      setError(result.error);
+      return;
+    }
+    if ("extract" in result && result.extract) {
+      const e = result.extract;
+      setValues((v) => ({
+        description: e.description ?? v.description,
+        number: e.number != null ? String(e.number) : v.number,
+        claimedValueDollars:
+          e.claimedValueDollars != null
+            ? formatCurrencyInput(String(e.claimedValueDollars))
+            : v.claimedValueDollars,
+        timeImpactDays: e.timeImpactDays != null ? String(e.timeImpactDays) : v.timeImpactDays,
+      }));
+      setNotice("Details populated from the document — review and add.");
+    }
   }
 
   return (
@@ -277,22 +311,32 @@ export function VariationsPanel({
             <span className="font-medium text-slate-700">Variation document (optional)</span>
             <span className="block text-xs text-slate-500">
               Quote, site instruction or variation direction — attached to the variation when
-              added.
+              added. PDF or photo for AI reading.
             </span>
             {fileName && <span className="block truncate text-xs text-slate-600">{fileName}</span>}
           </div>
           <label className="cursor-pointer rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs hover:bg-slate-100">
             {fileName ? "Change file" : "Choose file"}
             <input
+              ref={fileRef}
               name="file"
               type="file"
               className="hidden"
               onChange={(e) => setFileName(e.target.files?.[0]?.name ?? null)}
             />
           </label>
+          <button
+            type="button"
+            onClick={onExtract}
+            disabled={extracting || !fileName}
+            className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+          >
+            {extracting ? "Reading…" : "✦ Populate with AI"}
+          </button>
         </div>
 
         {error && <p className="text-red-600">{error}</p>}
+        {notice && <p className="text-green-700">{notice}</p>}
         <button
           type="submit"
           disabled={pending}

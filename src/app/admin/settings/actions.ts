@@ -64,6 +64,39 @@ export async function saveBrandingAction(formData: FormData) {
   return { ok: true };
 }
 
+const ContractorSchema = z.object({
+  legalName: z.string().max(200).optional().or(z.literal("")),
+  phone: z.string().max(50).optional().or(z.literal("")),
+  email: z.string().email().optional().or(z.literal("")),
+});
+
+export async function saveContractorAction(formData: FormData) {
+  const admin = await requireAdmin();
+  const meta = await getRequestMeta();
+
+  const parsed = ContractorSchema.safeParse({
+    legalName: formData.get("legalName") ?? "",
+    phone: formData.get("phone") ?? "",
+    email: formData.get("email") ?? "",
+  });
+  if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
+
+  await set(KNOWN_KEYS.CONTRACTOR_LEGAL_NAME, parsed.data.legalName || null, { actor: admin });
+  await set(KNOWN_KEYS.CONTRACTOR_PHONE, parsed.data.phone || null, { actor: admin });
+  await set(KNOWN_KEYS.CONTRACTOR_EMAIL, parsed.data.email || null, { actor: admin });
+
+  await record({
+    actor: { id: admin.id, email: admin.email },
+    action: "settings.contractor.update",
+    entity: { type: "settings", id: "contractor" },
+    after: { legalName: parsed.data.legalName, phone: parsed.data.phone, email: parsed.data.email },
+    request: meta,
+  });
+
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 const ManagementRepSchema = z.object({
   userId: z.string().min(1),
 });
