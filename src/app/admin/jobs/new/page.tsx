@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ContractForm } from "@/app/contractflow/[jobId]/contract-form";
 import { findJobById, listJobContractFiles } from "@/lib/jobs";
 import { JobForm } from "../job-form";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -11,6 +12,7 @@ export default async function NewJobPage({
 }: {
   searchParams: Promise<{ job?: string }>;
 }) {
+  await requireCapability("jobs.manage");
   const { job: jobId } = await searchParams;
   const job = jobId ? await findJobById(jobId) : null;
   if (jobId && !job) notFound();

@@ -11,7 +11,7 @@ import {
   suggestStructure,
 } from "@/lib/ai";
 import { record } from "@/lib/audit";
-import { requireUser } from "@/lib/auth-helpers";
+import { can, requireUser } from "@/lib/auth-helpers";
 import { applyTriage, findById } from "@/lib/incidents";
 import { getRequestMeta } from "@/lib/request-meta";
 
@@ -19,7 +19,7 @@ const ReviewSchema = z.object({ id: z.string().min(1) });
 
 export async function reviewIncidentAction(formData: FormData) {
   const user = await requireUser();
-  if (user.role !== "admin") return { error: "Admin only." };
+  if (!can(user, "incidents.review")) return { error: "Not authorised." };
   const meta = await getRequestMeta();
   const parsed = ReviewSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };
@@ -45,7 +45,7 @@ const SuggestSchema = z.object({ id: z.string().min(1) });
 
 export async function suggestIncidentAction(formData: FormData) {
   const user = await requireUser();
-  if (user.role !== "admin") return { error: "Admin only." };
+  if (!can(user, "incidents.review")) return { error: "Not authorised." };
   const meta = await getRequestMeta();
 
   if (!(await isAiConfigured())) {
@@ -112,7 +112,7 @@ const ApplyTriageSchema = z.object({
 
 export async function applyTriageAction(formData: FormData) {
   const user = await requireUser();
-  if (user.role !== "admin") return { error: "Admin only." };
+  if (!can(user, "incidents.review")) return { error: "Not authorised." };
   const meta = await getRequestMeta();
 
   const parsed = ApplyTriageSchema.safeParse({
@@ -166,7 +166,7 @@ const AssignJobSchema = z.object({
 
 export async function assignJobAction(formData: FormData) {
   const user = await requireUser();
-  if (user.role !== "admin") return { error: "Admin only." };
+  if (!can(user, "incidents.review")) return { error: "Not authorised." };
   const meta = await getRequestMeta();
 
   const parsed = AssignJobSchema.safeParse({
@@ -199,7 +199,7 @@ const CloseSchema = z.object({
 
 export async function closeIncidentAction(formData: FormData) {
   const user = await requireUser();
-  if (user.role !== "admin") return { error: "Admin only." };
+  if (!can(user, "incidents.review")) return { error: "Not authorised." };
   const meta = await getRequestMeta();
 
   const parsed = CloseSchema.safeParse({

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { documentTitle, findById, listForJob } from "@/lib/contract-documents";
 import { findJobById } from "@/lib/jobs";
 import { listVariationsForJob } from "@/lib/variations";
@@ -14,7 +14,7 @@ export default async function EditDocPage({
 }: {
   params: Promise<{ jobId: string; docId: string }>;
 }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const { jobId, docId } = await params;
   const [job, doc] = await Promise.all([findJobById(jobId), findById(docId)]);
   if (!job || !doc || doc.jobId !== jobId) notFound();

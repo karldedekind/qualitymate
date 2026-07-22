@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import {
   type ContractDocument,
   currentAdjustedPcDate,
@@ -96,7 +96,7 @@ export default async function JobRegisterPage({
 }: {
   params: Promise<{ jobId: string }>;
 }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const { jobId } = await params;
   const job = await findJobById(jobId);
   if (!job) notFound();

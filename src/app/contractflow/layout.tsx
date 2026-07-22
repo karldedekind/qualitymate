@@ -1,11 +1,11 @@
 import { BrandedHeader } from "@/components/branded-header";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
 export default async function ContractFlowLayout({ children }: { children: React.ReactNode }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   return (
     <div className="min-h-screen flex flex-col">
       <div className="print:hidden">

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { documentTitle, listForJob } from "@/lib/contract-documents";
 import { findJobById } from "@/lib/jobs";
 import { listVariationsForJob } from "@/lib/variations";
@@ -14,7 +14,7 @@ export default async function NewDocPage({
 }: {
   params: Promise<{ jobId: string; kind: string }>;
 }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const { jobId, kind } = await params;
   if (kind !== "rfi" && kind !== "nod" && kind !== "eot") notFound();
   const job = await findJobById(jobId);

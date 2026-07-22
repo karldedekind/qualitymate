@@ -6,7 +6,7 @@ import {
   IncidentTrendLine,
   TopJobsBar,
 } from "@/components/dashboard-charts";
-import { requireUser } from "@/lib/auth-helpers";
+import { can, requireUser } from "@/lib/auth-helpers";
 import {
   actionsByStatus,
   categoryBreakdown,
@@ -38,7 +38,7 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        {user.role === "admin" ? (
+        {can(user, "reports.view") ? (
           <AdminDashboard />
         ) : (
           <SiteStaffDashboard userId={user.id} />

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { isConfigured as isAiConfigured } from "@/lib/ai";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import {
   findById,
   getDefaultDistributionList,
@@ -148,7 +148,7 @@ function sectionState(
 type Props = { params: Promise<{ id: string }> };
 
 export default async function MeetingDetailPage({ params }: Props) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const { id } = await params;
   const meeting = await findById(id);
   if (!meeting) notFound();

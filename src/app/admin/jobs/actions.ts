@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { getRequestMeta } from "@/lib/request-meta";
 import {
   activateJob,
@@ -22,7 +22,7 @@ const CreateSchema = z.object({
 });
 
 export async function createJobAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("jobs.manage");
   const meta = await getRequestMeta();
   const parsed = CreateSchema.safeParse({
     number: formData.get("number"),
@@ -64,7 +64,7 @@ const UpdateSchema = z.object({
 });
 
 export async function updateJobAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("jobs.manage");
   const meta = await getRequestMeta();
   const parsed = UpdateSchema.safeParse({
     id: formData.get("id"),
@@ -106,7 +106,7 @@ export async function updateJobAction(formData: FormData) {
 const IdSchema = z.object({ id: z.string().min(1) });
 
 export async function deactivateJobAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("jobs.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };
@@ -128,7 +128,7 @@ export async function deactivateJobAction(formData: FormData) {
 }
 
 export async function activateJobAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("jobs.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };

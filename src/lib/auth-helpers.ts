@@ -4,12 +4,13 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/db";
 import { session as sessionTable, user } from "@/db/schema";
+import type { Role } from "@/lib/users";
 
 export type SessionUser = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "site_staff";
+  role: Role;
   mustChangePassword: boolean;
   deactivated: boolean;
   totpEnabled: boolean;
@@ -38,7 +39,7 @@ export async function getSessionUser(): Promise<SessionUser | null> {
     id: u.id,
     email: u.email,
     name: u.name,
-    role: u.role as "admin" | "site_staff",
+    role: u.role as Role,
     mustChangePassword: u.mustChangePassword,
     deactivated: u.deactivatedAt != null,
     totpEnabled: u.totpEnabledAt != null,
@@ -82,7 +83,7 @@ export async function requireUser(opts: RequireOpts = {}): Promise<SessionUser> 
   return sessionUser;
 }
 
-export async function requireRole(role: "admin" | "site_staff"): Promise<SessionUser> {
+export async function requireRole(role: Role): Promise<SessionUser> {
   const u = await requireUser();
   if (u.role !== role) redirect("/dashboard");
   return u;
@@ -92,18 +93,43 @@ export async function requireAdmin(): Promise<SessionUser> {
   return requireRole("admin");
 }
 
-export function can(
-  u: SessionUser,
-  capability:
-    | "users.manage"
-    | "settings.manage"
-    | "audit.export"
-    | "incidents.review"
-    | "meetings.approve",
-): boolean {
-  if (u.role === "admin") return true;
-  switch (capability) {
-    default:
+/**
+ * Feature capabilities. Admin-only areas (users, settings, backups, data
+ * export, audit log, diagnostics, heartbeat) have no capability — they gate
+ * via requireAdmin().
+ */
+export type Capability =
+  | "contractflow.manage"
+  | "jobs.manage"
+  | "roster.manage"
+  | "incidents.review"
+  | "actions.manage"
+  | "meetings.manage"
+  | "reports.view";
+
+const PM_CAPABILITIES: ReadonlySet<Capability> = new Set([
+  "contractflow.manage",
+  "jobs.manage",
+  "roster.manage",
+  "incidents.review",
+  "actions.manage",
+  "meetings.manage",
+  "reports.view",
+]);
+
+export function can(u: SessionUser, capability: Capability): boolean {
+  switch (u.role) {
+    case "admin":
+      return true;
+    case "project_manager":
+      return PM_CAPABILITIES.has(capability);
+    case "site_staff":
       return false;
   }
+}
+
+export async function requireCapability(capability: Capability): Promise<SessionUser> {
+  const u = await requireUser();
+  if (!can(u, capability)) redirect("/dashboard");
+  return u;
 }

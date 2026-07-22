@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { user } from "@/db/schema";
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { getBranding } from "@/lib/branding";
 import {
   actionsByStatus,
@@ -18,7 +18,7 @@ import { get, KNOWN_KEYS } from "@/lib/settings";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("reports.view");
   const meta = await getRequestMeta();
 
   const [branding, kpiData, trend, categories, actions, topJobs, repId] =

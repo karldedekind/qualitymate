@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { ScheduleMeetingForm } from "./schedule-form";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
-export default function NewMeetingPage() {
+export default async function NewMeetingPage() {
+  await requireCapability("meetings.manage");
   return (
     <div className="space-y-4 max-w-2xl">
       <Link href="/admin/meetings" className="text-sm text-blue-700 hover:underline">

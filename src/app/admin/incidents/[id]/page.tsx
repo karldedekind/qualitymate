@@ -16,6 +16,7 @@ import { CreateActionForm } from "./create-action";
 import { ReviewButton, CloseForm } from "./review-close";
 import { TriagePanel, type CategoryOption } from "./triage";
 import { ResolveButton } from "../../../actions/resolve-button";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -42,6 +43,7 @@ async function listActiveCategories(): Promise<CategoryOption[]> {
 }
 
 export default async function AdminIncidentDetailPage({ params, searchParams }: Props) {
+  await requireCapability("incidents.review");
   const { id } = await params;
   const { from } = await searchParams;
   const incident = await findById(id);

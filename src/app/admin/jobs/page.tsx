@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { listJobs } from "@/lib/jobs";
 import { JobRow } from "./job-row";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminJobsPage() {
+  await requireCapability("jobs.manage");
   const all = await listJobs();
   const active = all.filter((j) => j.active);
   const inactive = all.filter((j) => !j.active);

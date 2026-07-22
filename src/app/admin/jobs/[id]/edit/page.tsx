@@ -2,12 +2,14 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { findJobById } from "@/lib/jobs";
 import { JobForm } from "../../job-form";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
 type Props = { params: Promise<{ id: string }> };
 
 export default async function EditJobPage({ params }: Props) {
+  await requireCapability("jobs.manage");
   const { id } = await params;
   const job = await findJobById(id);
   if (!job) notFound();

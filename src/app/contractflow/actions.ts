@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { getRequestMeta } from "@/lib/request-meta";
 import { saveFile } from "@/lib/uploads";
 
@@ -86,7 +86,7 @@ function draftUploads(formData: FormData) {
 }
 
 export async function createDraftAction(jobId: string, kind: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const parsedKind = KindSchema.safeParse(kind);
   if (!parsedKind.success) return { error: "Unknown document kind." };
@@ -146,7 +146,7 @@ export async function createDraftAction(jobId: string, kind: string, formData: F
 }
 
 export async function updateDraftAction(documentId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { findById, updateDraft } = await import("@/lib/contract-documents");
   const doc = await findById(documentId);
@@ -189,7 +189,7 @@ export async function updateDraftAction(documentId: string, formData: FormData) 
 }
 
 export async function deleteDraftAction(documentId: string) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { findById, deleteDraft } = await import("@/lib/contract-documents");
   const doc = await findById(documentId);
@@ -211,7 +211,7 @@ export async function deleteDraftAction(documentId: string) {
 }
 
 export async function issueAction(documentId: string) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { issueAndDistribute } = await import("@/lib/contract-issue");
   try {
@@ -240,7 +240,7 @@ export async function issueAction(documentId: string) {
 }
 
 export async function startRevisionAction(documentId: string) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { startRevision } = await import("@/lib/contract-documents");
   try {
@@ -264,7 +264,7 @@ const ResponseSchema = z.object({
 });
 
 export async function recordResponseAction(documentId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const parsed = ResponseSchema.safeParse({
     status: formData.get("status"),
@@ -312,7 +312,7 @@ export async function recordResponseAction(documentId: string, formData: FormDat
 }
 
 export async function withdrawAction(documentId: string) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { withdraw } = await import("@/lib/contract-documents");
   try {
@@ -331,7 +331,7 @@ export async function withdrawAction(documentId: string) {
 }
 
 export async function uploadAttachmentAction(documentId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { findById, addDocFile } = await import("@/lib/contract-documents");
   const doc = await findById(documentId);
@@ -378,7 +378,7 @@ const JobContractSchema = z.object({
 });
 
 export async function updateJobContractAction(jobId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const obj: Record<string, unknown> = {};
   for (const key of [
@@ -419,7 +419,7 @@ const CONTRACT_SRC_EXT = new Set([".pdf", ".png", ".jpg", ".jpeg"]);
 const CONTRACT_SRC_KINDS = new Set(["loa", "po", "sr_rep", "conditions"]);
 
 export async function uploadJobContractFileAction(jobId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const kind = String(formData.get("kind") ?? "");
   if (!CONTRACT_SRC_KINDS.has(kind)) return { error: "Unknown document kind." };
@@ -455,7 +455,7 @@ export async function uploadJobContractFileAction(jobId: string, formData: FormD
 }
 
 export async function extractJobContractAction(jobId: string) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const { readFile } = await import("node:fs/promises");
   const { join, extname } = await import("node:path");
   const { findJobById, listJobContractFiles } = await import("@/lib/jobs");
@@ -494,7 +494,7 @@ export async function extractJobContractAction(jobId: string) {
 }
 
 export async function linkVariationAction(documentId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { findById, linkVariation } = await import("@/lib/contract-documents");
   const doc = await findById(documentId);
@@ -528,7 +528,7 @@ const VariationSchema = z.object({
 });
 
 export async function createVariationAction(jobId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const obj: Record<string, unknown> = { description: formData.get("description") };
   for (const key of ["number", "claimedValueDollars", "timeImpactDays"] as const) {
@@ -599,7 +599,7 @@ export async function createVariationAction(jobId: string, formData: FormData) {
  * until the user reviews the populated fields and adds the variation.
  */
 export async function extractVariationDetailsAction(formData: FormData) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
   const MEDIA: Record<string, "application/pdf" | "image/png" | "image/jpeg"> = {
@@ -641,7 +641,7 @@ const BATCH_VARIATION_MAX_FILES = 20;
  * one bad file never blocks the rest.
  */
 export async function batchCreateVariationsAction(jobId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const files = formData
     .getAll("files")
@@ -756,7 +756,7 @@ const VariationStatusSchema = z.object({
 });
 
 export async function setVariationStatusAction(variationId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const obj: Record<string, unknown> = { status: formData.get("status") };
   const approvedRaw = formData.get("approvedValueDollars");
@@ -799,7 +799,7 @@ export async function setVariationStatusAction(variationId: string, formData: Fo
 }
 
 export async function uploadVariationFileAction(variationId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const { findVariationById, addVariationFile } = await import("@/lib/variations");
   const v = await findVariationById(variationId);
@@ -842,7 +842,7 @@ const CommSchema = z.object({
 });
 
 export async function extractCommunicationDetailsAction(jobId: string, formData: FormData) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose a file." };
   if (!file.name.toLowerCase().endsWith(".eml")) {
@@ -879,7 +879,7 @@ export async function extractCommunicationDetailsAction(jobId: string, formData:
 }
 
 export async function logCommunicationAction(jobId: string, formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const parsed = CommSchema.safeParse({
     subject: formData.get("subject"),
@@ -937,7 +937,7 @@ export async function logCommunicationAction(jobId: string, formData: FormData) 
 // --- Signature ---
 
 export async function saveSignatureAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   const meta = await getRequestMeta();
   const dataUrl = String(formData.get("signature") ?? "");
   const { saveUserSignature } = await import("@/lib/contract-issue");
@@ -967,7 +967,7 @@ export async function suggestRewriteAction(input: {
   fieldLabel: string;
   text: string;
 }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const parsed = RewriteRequestSchema.safeParse({ ...input, text: input.text.trim() });
   if (!parsed.success) return { error: "Write some text first." };
   const { isConfigured, rewriteContractField } = await import("@/lib/ai");

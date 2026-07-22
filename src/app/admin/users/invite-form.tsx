@@ -45,6 +45,7 @@ export function InviteForm() {
             className="w-full rounded-md border border-slate-300 px-3 py-2"
           >
             <option value="site_staff">site_staff</option>
+            <option value="project_manager">project_manager</option>
             <option value="admin">admin</option>
           </select>
         </label>

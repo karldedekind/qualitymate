@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { history } from "@/lib/audit";
+import { requireAdmin } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,7 @@ type Props = {
 };
 
 export default async function EntityHistoryPage({ params }: Props) {
+  await requireAdmin();
   const { entityType, entityId } = await params;
   const decodedId = decodeURIComponent(entityId);
   const events = await history(entityType, decodedId);

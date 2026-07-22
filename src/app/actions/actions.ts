@@ -9,7 +9,7 @@ import {
   resolve as resolveAction,
 } from "@/lib/actions";
 import { record } from "@/lib/audit";
-import { requireAdmin, requireUser } from "@/lib/auth-helpers";
+import { can, requireCapability, requireUser } from "@/lib/auth-helpers";
 import { getRequestMeta } from "@/lib/request-meta";
 import { saveImage } from "@/lib/uploads";
 
@@ -22,7 +22,7 @@ const CreateSchema = z.object({
 });
 
 export async function createActionAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("actions.manage");
   const meta = await getRequestMeta();
 
   const rawIncident = formData.get("incidentId");
@@ -71,7 +71,7 @@ const AssignSchema = z.object({
 });
 
 export async function assignActionAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("actions.manage");
   const meta = await getRequestMeta();
 
   const parsed = AssignSchema.safeParse({
@@ -118,7 +118,7 @@ export async function resolveActionAction(formData: FormData) {
   if (!existing) return { error: "Action not found." };
 
   const isOwner = existing.assigneeId === user.id;
-  const isAdmin = user.role === "admin";
+  const isAdmin = can(user, "actions.manage");
   if (!isOwner && !isAdmin) return { error: "Not authorised." };
   if (existing.status === "resolved") return { error: "Already resolved." };
 

@@ -14,7 +14,7 @@ function newId(): string {
   return randomBytes(16).toString("base64url");
 }
 
-export type Role = "admin" | "site_staff";
+export type Role = "admin" | "project_manager" | "site_staff";
 
 export type CreatedInvite = {
   id: string;
@@ -114,6 +114,14 @@ export async function reactivateUser(userId: string): Promise<void> {
 
 export async function setRole(userId: string, role: Role): Promise<void> {
   await db.update(user).set({ role, updatedAt: new Date() }).where(eq(user.id, userId));
+}
+
+export async function countActiveAdmins(): Promise<number> {
+  const rows = await db
+    .select({ id: user.id })
+    .from(user)
+    .where(and(eq(user.role, "admin"), isNull(user.deactivatedAt)));
+  return rows.length;
 }
 
 export type AdminResetResult = { tempPassword: string };

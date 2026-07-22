@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { documentTitle, listOpenAcrossJobs } from "@/lib/contract-documents";
 import { listJobs } from "@/lib/jobs";
 import { STATUS_CLASS, STATUS_LABEL, formatIsoDate } from "./format";
@@ -7,7 +7,7 @@ import { STATUS_CLASS, STATUS_LABEL, formatIsoDate } from "./format";
 export const dynamic = "force-dynamic";
 
 export default async function ContractFlowOverviewPage() {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const [open, jobs] = await Promise.all([listOpenAcrossJobs(), listJobs({ activeOnly: true })]);
   const overdue = open.filter((d) => d.overdue);
 

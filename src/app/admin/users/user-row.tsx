@@ -12,7 +12,7 @@ type UserShape = {
   id: string;
   email: string;
   name: string;
-  role: "admin" | "site_staff";
+  role: "admin" | "project_manager" | "site_staff";
   createdAt: Date;
   deactivatedAt: Date | null;
 };
@@ -22,7 +22,7 @@ export function UserRow({ user, deactivated = false }: { user: UserShape; deacti
   const [tempPassword, setTempPassword] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function changeRole(role: "admin" | "site_staff") {
+  async function changeRole(role: "admin" | "project_manager" | "site_staff") {
     setError(null);
     const fd = new FormData();
     fd.set("userId", user.id);
@@ -83,10 +83,11 @@ export function UserRow({ user, deactivated = false }: { user: UserShape; deacti
       <td className="px-3 py-2">
         <select
           value={user.role}
-          onChange={(e) => changeRole(e.target.value as "admin" | "site_staff")}
+          onChange={(e) => changeRole(e.target.value as "admin" | "project_manager" | "site_staff")}
           className="rounded border border-slate-300 px-2 py-1 text-sm"
         >
           <option value="site_staff">site_staff</option>
+          <option value="project_manager">project_manager</option>
           <option value="admin">admin</option>
         </select>
       </td>

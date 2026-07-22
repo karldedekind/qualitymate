@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
 import {
   type ContractDocContent,
@@ -496,8 +496,9 @@ export type ContractDocScanResult = {
 };
 
 /**
- * Notify every active admin about overdue RFI responses, once per document
- * (`overdue_notified_at` stamps delivery, mirroring corrective-action scans).
+ * Notify every active admin and project manager about overdue RFI responses,
+ * once per document (`overdue_notified_at` stamps delivery, mirroring
+ * corrective-action scans).
  */
 export async function runContractDocScans(now: Date = new Date()): Promise<ContractDocScanResult> {
   const { send } = await import("@/lib/notify");
@@ -508,7 +509,7 @@ export async function runContractDocScans(now: Date = new Date()): Promise<Contr
   const admins = await db
     .select({ id: user.id })
     .from(user)
-    .where(and(eq(user.role, "admin"), isNull(user.deactivatedAt)));
+    .where(and(inArray(user.role, ["admin", "project_manager"]), isNull(user.deactivatedAt)));
 
   let notified = 0;
   for (const doc of overdue) {

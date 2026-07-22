@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listAll, type Meeting } from "@/lib/meetings";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -82,6 +83,7 @@ function Stepper({ steps }: { steps: Step[] }) {
 }
 
 export default async function AdminMeetingsPage() {
+  await requireCapability("meetings.manage");
   const rows = await listAll();
 
   return (

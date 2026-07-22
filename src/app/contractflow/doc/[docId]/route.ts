@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { findById } from "@/lib/contract-documents";
 
 /**
@@ -10,7 +10,7 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ docId: string }> },
 ) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const { docId } = await params;
   const doc = await findById(docId);
   if (!doc) notFound();

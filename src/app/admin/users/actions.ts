@@ -12,13 +12,14 @@ import {
   setRole,
   adminResetPassword,
   findUserById,
+  countActiveAdmins,
 } from "@/lib/users";
 import { sendMail, isConfigured as smtpConfigured } from "@/lib/smtp";
 import { getBranding } from "@/lib/branding";
 
 const InviteSchema = z.object({
   email: z.string().email(),
-  role: z.enum(["admin", "site_staff"]),
+  role: z.enum(["admin", "project_manager", "site_staff"]),
 });
 
 export async function inviteUserAction(formData: FormData) {
@@ -69,7 +70,7 @@ export async function inviteUserAction(formData: FormData) {
 
 const SetRoleSchema = z.object({
   userId: z.string().min(1),
-  role: z.enum(["admin", "site_staff"]),
+  role: z.enum(["admin", "project_manager", "site_staff"]),
 });
 
 export async function setRoleAction(formData: FormData) {
@@ -83,6 +84,15 @@ export async function setRoleAction(formData: FormData) {
 
   const target = await findUserById(parsed.data.userId);
   if (!target) return { error: "User not found" };
+
+  if (target.role === "admin" && parsed.data.role !== "admin") {
+    if (parsed.data.userId === admin.id) {
+      return { error: "You cannot change your own role." };
+    }
+    if ((await countActiveAdmins()) <= 1) {
+      return { error: "Cannot demote the last active admin." };
+    }
+  }
 
   await setRole(parsed.data.userId, parsed.data.role);
   await record({

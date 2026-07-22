@@ -1,6 +1,7 @@
 import { listUsers } from "@/lib/users";
 import { InviteForm } from "./invite-form";
 import { UserRow } from "./user-row";
+import { requireAdmin } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -9,6 +10,7 @@ type Props = {
 };
 
 export default async function AdminUsersPage({ searchParams }: Props) {
+  await requireAdmin();
   const sp = await searchParams;
   const { active, deactivated } = await listUsers();
 

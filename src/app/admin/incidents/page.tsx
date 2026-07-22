@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { listByStatusWithJob } from "@/lib/incidents";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ const STATUS_LABEL: Record<string, string> = {
 type SearchParams = Promise<{ status?: string }>;
 
 export default async function AdminIncidentsPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireCapability("incidents.review");
   const { status } = await searchParams;
   const active = (status === "open" || status === "closed" ? status : "pending_review") as
     | "pending_review"

@@ -1,5 +1,5 @@
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { findJobById } from "@/lib/jobs";
 import { getRequestMeta } from "@/lib/request-meta";
 import { filterRows, listForJob, todayIsoUtc, toCsv } from "@/lib/roster";
@@ -7,7 +7,7 @@ import { filterRows, listForJob, todayIsoUtc, toCsv } from "@/lib/roster";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("roster.manage");
   const meta = await getRequestMeta();
   const url = new URL(req.url);
   const jobId = url.searchParams.get("job");

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { CONTRACTFLOW_PRIVATE_PREFIXES, uploadsRoot } from "@/lib/uploads";
 
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ const MIME: Record<string, string> = {
 };
 
 export async function GET(_req: Request, { params }: { params: Promise<{ path: string[] }> }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const { path } = await params;
   const joined = path.join("/");
   const safe = normalize(joined);

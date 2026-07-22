@@ -1,11 +1,11 @@
 import Link from "next/link";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { SignatureForm } from "./signature-form";
 
 export const dynamic = "force-dynamic";
 
 export default async function SignaturePage() {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("contractflow.manage");
   return (
     <div className="mx-auto max-w-xl space-y-4">
       <Link href="/contractflow" className="text-sm text-blue-700 underline">

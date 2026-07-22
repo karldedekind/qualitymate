@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { z } from "zod";
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import {
   approve as approveMeeting,
   distributeMinutes,
@@ -50,7 +50,7 @@ function parseAttendees(text: string | null | undefined): MeetingAttendee[] {
 }
 
 export async function scheduleMeetingAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
 
   const parsed = ScheduleSchema.safeParse({
@@ -124,7 +124,7 @@ export async function scheduleMeetingAction(formData: FormData) {
 const IdSchema = z.object({ id: z.string().min(1) });
 
 export async function generatePackAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };
@@ -159,7 +159,7 @@ const ManualPackSchema = z.object({
 });
 
 export async function saveManualPackAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = ManualPackSchema.safeParse({
     id: formData.get("id"),
@@ -198,7 +198,7 @@ const DraftMinutesSchema = z.object({
 });
 
 export async function draftMinutesAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = DraftMinutesSchema.safeParse({
     id: formData.get("id"),
@@ -237,7 +237,7 @@ const ManualMinutesSchema = z.object({
 });
 
 export async function saveManualMinutesAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = ManualMinutesSchema.safeParse({
     id: formData.get("id"),
@@ -275,7 +275,7 @@ export async function saveManualMinutesAction(formData: FormData) {
 }
 
 export async function completeMeetingAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };
@@ -297,7 +297,7 @@ export async function completeMeetingAction(formData: FormData) {
 }
 
 export async function issueSignoffsAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };
@@ -356,7 +356,7 @@ export async function issueSignoffsAction(formData: FormData) {
 }
 
 export async function approveMeetingAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };
@@ -438,7 +438,7 @@ const DistributionSchema = z.object({
 });
 
 export async function saveMeetingDistributionAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = DistributionSchema.safeParse({
     id: formData.get("id"),
@@ -465,7 +465,7 @@ export async function saveMeetingDistributionAction(formData: FormData) {
 const DefaultDistributionSchema = z.object({ emails: z.string().max(8000) });
 
 export async function saveDefaultDistributionAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = DefaultDistributionSchema.safeParse({ emails: formData.get("emails") });
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? "Invalid input" };
@@ -486,7 +486,7 @@ export async function saveDefaultDistributionAction(formData: FormData) {
 }
 
 export async function cancelMeetingAction(formData: FormData) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("meetings.manage");
   const meta = await getRequestMeta();
   const parsed = IdSchema.safeParse({ id: formData.get("id") });
   if (!parsed.success) return { error: "Invalid input" };

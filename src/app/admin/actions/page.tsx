@@ -3,6 +3,7 @@ import { asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { correctiveActions, incidents, user } from "@/db/schema";
 import { ResolveButton } from "../../actions/resolve-button";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ function fmt(date: Date | null) {
 }
 
 export default async function AdminActionsPage() {
+  await requireCapability("actions.manage");
   const rows = await db
     .select({
       a: correctiveActions,

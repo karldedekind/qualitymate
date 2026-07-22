@@ -10,6 +10,7 @@ import {
 } from "@/lib/roster";
 import { LocalTime } from "@/components/local-time";
 import { RotateTokenButton } from "./rotate-token-button";
+import { requireCapability } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,7 @@ type SearchParams = Promise<{
 }>;
 
 export default async function AdminRosterPage({ searchParams }: { searchParams: SearchParams }) {
+  await requireCapability("roster.manage");
   const sp = await searchParams;
   const jobs = await listJobs();
   const date = sp.date || todayIsoUtc();

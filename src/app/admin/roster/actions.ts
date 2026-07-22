@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { findJobById } from "@/lib/jobs";
 import { getRequestMeta } from "@/lib/request-meta";
 import { rotateSupervisorToken } from "@/lib/roster";
@@ -13,7 +13,7 @@ const RotateSchema = z.object({ jobId: z.string().min(1) });
 export async function rotateSupervisorTokenAction(
   formData: FormData,
 ): Promise<{ ok: true; token: string; url: string } | { error: string }> {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("roster.manage");
   const meta = await getRequestMeta();
   const parsed = RotateSchema.safeParse({ jobId: formData.get("jobId") });
   if (!parsed.success) return { error: "Invalid input" };

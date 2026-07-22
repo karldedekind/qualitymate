@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { distinctEntityTypes, query } from "@/lib/audit";
+import { requireAdmin } from "@/lib/auth-helpers";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ function parseDate(value: string | undefined, endOfDay = false): Date | null {
 }
 
 export default async function AuditLogPage({ searchParams }: Props) {
+  await requireAdmin();
   const sp = await searchParams;
   const from = parseDate(sp.from);
   const to = parseDate(sp.to, true);

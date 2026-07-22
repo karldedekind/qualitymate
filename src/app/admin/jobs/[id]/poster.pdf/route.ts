@@ -1,5 +1,5 @@
 import { record } from "@/lib/audit";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { getRequestMeta } from "@/lib/request-meta";
 import { generatePoster } from "@/lib/qr-poster";
 
@@ -9,7 +9,7 @@ export async function GET(
   _req: Request,
   ctx: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin();
+  const admin = await requireCapability("jobs.manage");
   const meta = await getRequestMeta();
   const { id } = await ctx.params;
 

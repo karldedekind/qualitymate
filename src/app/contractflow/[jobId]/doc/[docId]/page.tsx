@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { requireAdmin } from "@/lib/auth-helpers";
+import { requireCapability } from "@/lib/auth-helpers";
 import { listCommunicationsForDocument } from "@/lib/communications";
 import {
   documentTitle,
@@ -56,7 +56,7 @@ export default async function DocDetailPage({
   params: Promise<{ jobId: string; docId: string }>;
   searchParams: Promise<{ respond?: string }>;
 }) {
-  await requireAdmin();
+  await requireCapability("contractflow.manage");
   const [{ jobId, docId }, { respond }] = await Promise.all([params, searchParams]);
   const [job, doc] = await Promise.all([findJobById(jobId), findById(docId)]);
   if (!job || !doc || doc.jobId !== jobId) notFound();
