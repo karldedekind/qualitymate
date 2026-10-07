@@ -34,6 +34,11 @@ const TABLES_IN_RESTORE_ORDER = [
   "corrective_actions",
   "meetings",
   "setup_state",
+  "controlled_documents",
+  "controlled_doc_versions",
+  "controlled_doc_legacy_ids",
+  "controlled_doc_usage_triggers",
+  "controlled_doc_reviews",
 ];
 
 export const BACKUP_FILENAME_RE = /^qualitymate-backup-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)\.tar\.gz$/;

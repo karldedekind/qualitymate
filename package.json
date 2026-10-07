@@ -14,6 +14,7 @@
     "scan:anomalies": "tsx scripts/scan-anomalies.ts",
     "seed:anomaly-hitl": "tsx scripts/seed-anomaly-hitl.ts",
     "seed:incidents": "tsx scripts/seed-incidents.ts",
+    "seed:document-register": "tsx scripts/seed-document-register.ts",
     "scan:actions": "tsx scripts/scan-actions.ts",
     "scan:contract-docs": "tsx scripts/scan-contract-docs.ts",
     "heartbeat:tick": "tsx scripts/heartbeat-tick.ts",

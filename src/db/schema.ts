@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   serial,
   text,
   timestamp,
@@ -504,4 +505,124 @@ export const setupState = pgTable("setup_state", {
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ── Document Register ────────────────────────────────────────────────────────
+// Document Categories, Document Types and Usage Triggers are rows in
+// `categories` with these kinds.
+export const DOC_CATEGORY_KIND = "doc_category";
+export const DOC_TYPE_KIND = "doc_type";
+export const DOC_USAGE_TRIGGER_KIND = "doc_usage_trigger";
+
+export const controlledDocVersionStatusEnum = pgEnum("controlled_doc_version_status", [
+  "draft",
+  "issued",
+  "superseded",
+]);
+
+export const controlledDocReviewOutcomeEnum = pgEnum("controlled_doc_review_outcome", [
+  "no_change",
+  "changes_needed",
+]);
+
+/** One block of a Version's structured content. The block types are defined
+ *  by the House Style renderer. */
+export type ControlledDocBlock = { type: string; [key: string]: unknown };
+
+export const controlledDocuments = pgTable(
+  "controlled_documents",
+  {
+    id: text("id").primaryKey(),
+    // Built by the Naming Convention; permanent across Versions.
+    documentId: text("document_id").notNull().unique(),
+    categoryId: text("category_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
+    typeId: text("type_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
+    // Unique per Document Type across all Document Categories.
+    number: integer("number").notNull(),
+    title: text("title").notNull(),
+    notes: text("notes"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("controlled_documents_type_number_idx").on(t.typeId, t.number)],
+);
+
+// Issued and superseded rows can never be deleted (DB trigger, 7-year retention).
+export const controlledDocVersions = pgTable(
+  "controlled_doc_versions",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => controlledDocuments.id, { onDelete: "restrict" }),
+    version: integer("version").notNull(),
+    status: controlledDocVersionStatusEnum("status").notNull().default("draft"),
+    dateIssued: date("date_issued"),
+    nextReviewDate: date("next_review_date"),
+    approvedBy: text("approved_by").references(() => user.id, { onDelete: "set null" }),
+    // Kept so "Approved By" survives the user being removed.
+    approvedByName: text("approved_by_name"),
+    archiveDate: date("archive_date"),
+    content: jsonb("content").$type<ControlledDocBlock[]>().notNull().default([]),
+    sourceFilePath: text("source_file_path"),
+    sourceFileName: text("source_file_name"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("controlled_doc_versions_doc_version_idx").on(t.documentId, t.version),
+    uniqueIndex("controlled_doc_versions_one_issued_idx")
+      .on(t.documentId)
+      .where(sql`"status" = 'issued'`),
+    uniqueIndex("controlled_doc_versions_one_draft_idx")
+      .on(t.documentId)
+      .where(sql`"status" = 'draft'`),
+  ],
+);
+
+export const controlledDocLegacyIds = pgTable(
+  "controlled_doc_legacy_ids",
+  {
+    id: text("id").primaryKey(),
+    documentId: text("document_id")
+      .notNull()
+      .references(() => controlledDocuments.id, { onDelete: "cascade" }),
+    legacyId: text("legacy_id").notNull(),
+    // Where it came from, e.g. "old register" or "file".
+    source: text("source"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("controlled_doc_legacy_ids_doc_legacy_idx").on(t.documentId, t.legacyId)],
+);
+
+export const controlledDocUsageTriggers = pgTable(
+  "controlled_doc_usage_triggers",
+  {
+    documentId: text("document_id")
+      .notNull()
+      .references(() => controlledDocuments.id, { onDelete: "cascade" }),
+    triggerId: text("trigger_id")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
+  },
+  (t) => [primaryKey({ columns: [t.documentId, t.triggerId] })],
+);
+
+export const controlledDocReviews = pgTable("controlled_doc_reviews", {
+  id: text("id").primaryKey(),
+  versionId: text("version_id")
+    .notNull()
+    .references(() => controlledDocVersions.id, { onDelete: "restrict" }),
+  reviewedOn: date("reviewed_on").notNull(),
+  reviewerId: text("reviewer_id").references(() => user.id, { onDelete: "set null" }),
+  reviewerName: text("reviewer_name").notNull(),
+  outcome: controlledDocReviewOutcomeEnum("outcome").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });

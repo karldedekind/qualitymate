@@ -105,7 +105,11 @@ export type Capability =
   | "incidents.review"
   | "actions.manage"
   | "meetings.manage"
-  | "reports.view";
+  | "reports.view"
+  // Document Register. Fixed by design, not configurable.
+  | "documents.view" // view and download current Versions
+  | "documents.history" // see Superseded Versions and Version history
+  | "documents.manage"; // import, draft, approve and issue (admin only)
 
 const PM_CAPABILITIES: ReadonlySet<Capability> = new Set([
   "contractflow.manage",
@@ -115,16 +119,20 @@ const PM_CAPABILITIES: ReadonlySet<Capability> = new Set([
   "actions.manage",
   "meetings.manage",
   "reports.view",
+  "documents.view",
+  "documents.history",
 ]);
 
-export function can(u: SessionUser, capability: Capability): boolean {
+const SITE_STAFF_CAPABILITIES: ReadonlySet<Capability> = new Set(["documents.view"]);
+
+export function can(u: Pick<SessionUser, "role">, capability: Capability): boolean {
   switch (u.role) {
     case "admin":
       return true;
     case "project_manager":
       return PM_CAPABILITIES.has(capability);
     case "site_staff":
-      return false;
+      return SITE_STAFF_CAPABILITIES.has(capability);
   }
 }
 

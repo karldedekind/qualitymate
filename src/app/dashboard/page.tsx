@@ -63,6 +63,8 @@ async function SiteStaffDashboard({ userId }: { userId: string }) {
         File an Incident
       </Link>
 
+      <CompanyRegistersCard />
+
       <div className="grid lg:grid-cols-2 gap-6">
         <section className="bg-white border border-slate-200 rounded-lg p-5 shadow-sm">
           <header className="flex items-center justify-between mb-3">
@@ -159,6 +161,8 @@ async function AdminDashboard() {
 
       <ContractFlowCard />
 
+      <CompanyRegistersCard />
+
       <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-400 pt-2">
         Reports
       </h2>
@@ -217,6 +221,25 @@ function ContractFlowCard() {
         </p>
       </div>
       <span className="shrink-0 text-indigo-300 group-hover:text-white transition-colors">
+        Open →
+      </span>
+    </Link>
+  );
+}
+
+function CompanyRegistersCard() {
+  return (
+    <Link
+      href="/registers"
+      className="group flex items-center justify-between gap-4 rounded-lg border border-lime-200 bg-lime-50 px-5 py-4 shadow-sm hover:bg-lime-100 hover:border-lime-300 transition-colors"
+    >
+      <div className="min-w-0">
+        <span className="text-base font-semibold text-lime-950">Company Registers</span>
+        <p className="mt-0.5 text-sm text-lime-800">
+          Document Register — RIM&apos;s policies, manuals, procedures, SWMS, forms and templates.
+        </p>
+      </div>
+      <span className="shrink-0 text-lime-600 group-hover:text-lime-900 transition-colors">
         Open →
       </span>
     </Link>
