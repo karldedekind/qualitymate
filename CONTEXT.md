@@ -33,7 +33,7 @@ The business area that owns a Controlled Document: QSE (Quality, Safety, Environ
 _Avoid_: department, prefix
 
 **Document Type**:
-The kind of Controlled Document: TEMP, MAN, FORM, CTR, REG, PLA, GEN, CHK, COP, SWMS, SOP (with sub-types SOPS, SOPE, SOPQ, SOPA, SOPM). Defined in the IMS Manual §4.2.1; admins maintain the list. A Type's code is locked once any document uses it; changing it means retiring it and re-issuing the documents as new Versions.
+The kind of Controlled Document: TEMP, MAN, FRM, CTR, REG, PLA, GEN, CHK, COP, SWMS, SOP (with sub-types SOPS, SOPE, SOPQ, SOPA, SOPM), POL. Defined in the IMS Manual §4.2.1; admins maintain the list. A Type's code is locked once any document uses it; changing it means retiring it and re-issuing the documents as new Versions.
 _Avoid_: doc code
 
 **Version**:

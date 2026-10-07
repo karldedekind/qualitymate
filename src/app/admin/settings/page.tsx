@@ -8,11 +8,13 @@ import { DECLARATION_KEYS, getDeclarations } from "@/lib/checkin";
 import { isConfigured as isAiConfigured } from "@/lib/ai";
 import { getDefaultDistributionList } from "@/lib/meetings";
 import { isMfaRequiredForAdmins } from "@/lib/mfa";
+import { CODE_LOCKED_MESSAGE, hasVisibleCode, listItems } from "@/lib/document-lists";
 import { AiKeyForm } from "./ai-key-form";
 import { BrandingForm } from "./branding-form";
 import { ContractorForm } from "./contractor-form";
 import { DeclarationsForm } from "./declarations-form";
 import { DistributionForm } from "./distribution-form";
+import { DocumentListForm } from "./document-list-form";
 import { ManagementRepForm } from "./management-rep-form";
 import { MfaRequireForm } from "./mfa-form";
 import { S3Form } from "./s3-form";
@@ -46,6 +48,11 @@ export default async function AdminSettingsPage() {
   const aiConfigured = await isAiConfigured();
   const defaultDistribution = await getDefaultDistributionList();
   const mfaRequired = await isMfaRequiredForAdmins();
+  const [docCategories, docTypes, docTriggers] = await Promise.all([
+    listItems("doc_category"),
+    listItems("doc_type"),
+    listItems("doc_usage_trigger"),
+  ]);
 
   const [s3Endpoint, s3Region, s3Bucket, s3AccessKey, s3SecretKey, s3PathStyle, s3Prefix] =
     await Promise.all([
@@ -78,7 +85,7 @@ export default async function AdminSettingsPage() {
       <section>
         <h1 className="text-2xl font-semibold mb-1">Settings</h1>
         <p className="text-slate-600 text-sm">
-          Branding &amp; ISO 9001, communications, security, AI, and backup.
+          Branding &amp; ISO 9001, Document Register lists, communications, security, AI, and backup.
         </p>
       </section>
 
@@ -114,6 +121,49 @@ export default async function AdminSettingsPage() {
           </p>
           <DeclarationsForm initial={declarations} />
         </section>
+      </SettingsGroup>
+
+      <SettingsGroup heading="Document Register">
+        {(
+          [
+            {
+              kind: "doc_category",
+              title: "Document Categories",
+              blurb: "The business area that owns a document. The code is the first part of the Document ID.",
+              items: docCategories,
+            },
+            {
+              kind: "doc_type",
+              title: "Document Types",
+              blurb: "The kind of document. The code and Number form the rest of the Document ID.",
+              items: docTypes,
+            },
+            {
+              kind: "doc_usage_trigger",
+              title: "Usage Triggers",
+              blurb: "Situations that call for a document, shown as \u201cWhen to use\u201d in the register.",
+              items: docTriggers,
+            },
+          ] as const
+        ).map((list) => (
+          <section
+            key={list.kind}
+            className="bg-white border border-slate-200 rounded-lg p-6 shadow-sm"
+          >
+            <h3 className="text-lg font-medium mb-1">{list.title}</h3>
+            <p className="text-slate-600 text-sm mb-1">{list.blurb}</p>
+            <p className="text-slate-500 text-xs mb-4">
+              {hasVisibleCode(list.kind) && <>🔒 {CODE_LOCKED_MESSAGE} </>}
+              Removing an item a document uses retires it instead of deleting it.
+            </p>
+            <DocumentListForm
+              kind={list.kind}
+              items={list.items}
+              showCode={hasVisibleCode(list.kind)}
+              lockedMessage={CODE_LOCKED_MESSAGE}
+            />
+          </section>
+        ))}
       </SettingsGroup>
 
       <SettingsGroup heading="Email & notifications">
