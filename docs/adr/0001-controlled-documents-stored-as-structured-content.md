@@ -1,0 +1,3 @@
+# Controlled Documents are stored as structured content, not Word files
+
+The master copy of a Controlled Document is its structured content held in QualityMate, and every PDF is rendered from that content using the house style (the same approach as Contract Documents). We rejected keeping a re-formatted .docx as the master: Word files drift from the house style as people edit them by hand, and the whole point of the Document Register is consistent formatting. The cost is that staff edit in the app, not in Word. A .docx export can still be offered, but it is a one-way output and never re-imported as a revision.

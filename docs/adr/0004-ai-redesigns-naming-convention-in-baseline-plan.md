@@ -1,0 +1,5 @@
+# The AI may redesign the whole Naming Convention, once, in the Baseline Plan
+
+Before the Baseline Date, every company document is uploaded and the AI proposes a Baseline Plan. The plan may redesign the entire Naming Convention: the ID pattern, the Category and Type lists, and the numbering, ignoring every current number. We chose this over keeping existing IMS numbers because the current numbering is internally inconsistent: two schemes, colliding numbers, and type codes that don't match the IMS Manual's own list. The owner wants a clean scheme to write back into the IMS Manual, not a patched one.
+
+Guardrails: scheme-level changes are presented as separate accept/reject items with the AI's reasoning, apart from the per-document numbering. Nothing is issued until an admin approves the plan. Every renumbered document keeps its Legacy ID(s). After the Baseline Date, the convention is fixed: codes lock once used (see design notes), and any later change to it is a normal controlled IMS change, not another re-plan.

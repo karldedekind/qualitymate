@@ -1,0 +1,3 @@
+# Imports are verbatim, fidelity-checked and human-approved
+
+When an existing Controlled Document is imported, the AI may change structure only (headings, lists, tables), never wording — known typos and inconsistent entity names included. A word-level Fidelity Check against the Source File's extracted text flags any drift, and a person approves the Import before it enters the register. We rejected letting the AI fix obvious errors during Import: a silently corrected document no longer matches its approved Version, which is an uncontrolled change under the IMS Manual §4.2.1 change process. Fixes are captured as Suggested Corrections and go through a normal new Version instead.
