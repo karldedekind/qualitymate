@@ -16,7 +16,7 @@ import { pipeline } from "node:stream/promises";
 import postgres, { type Sql } from "postgres";
 import * as tar from "tar";
 
-const TABLES_IN_RESTORE_ORDER = [
+export const TABLES_IN_RESTORE_ORDER = [
   "user",
   "invite",
   "session",
@@ -34,6 +34,15 @@ const TABLES_IN_RESTORE_ORDER = [
   "corrective_actions",
   "meetings",
   "setup_state",
+  "heartbeat_instances",
+  "heartbeats",
+  "job_contract_files",
+  "contract_documents",
+  "contract_doc_versions",
+  "contract_doc_files",
+  "variations",
+  "variation_files",
+  "communications",
 ];
 
 export const BACKUP_FILENAME_RE = /^qualitymate-backup-(\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}Z)\.tar\.gz$/;

@@ -64,7 +64,7 @@ describe("backup tarball — round trip", () => {
     const u = await createUser("admin@example.com");
 
     const { db } = await import("@/db");
-    const { jobs, incidents } = await import("@/db/schema");
+    const { jobs, incidents, variations } = await import("@/db/schema");
 
     // Seed
     const job = (await db
@@ -81,6 +81,10 @@ describe("backup tarball — round trip", () => {
         description: "desc",
         status: "open",
       })
+      .returning())[0]!;
+    const variation = (await db
+      .insert(variations)
+      .values({ id: newId(), jobId: job.id, number: 1, description: "Extra footing", createdBy: u.id })
       .returning())[0]!;
 
     const photoBytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -105,6 +109,7 @@ describe("backup tarball — round trip", () => {
     const { sql } = await import("drizzle-orm");
     await db.execute(sql`TRUNCATE "incident_photos" CASCADE`);
     await db.execute(sql`TRUNCATE "incidents" CASCADE`);
+    await db.execute(sql`TRUNCATE "variations" CASCADE`);
     await db.execute(sql`TRUNCATE "jobs" CASCADE`);
     await db.execute(sql`TRUNCATE "user" CASCADE`);
     await rm(uploadsDir, { recursive: true, force: true });
@@ -121,6 +126,7 @@ describe("backup tarball — round trip", () => {
     expect(restored.rowsRestored.user).toBeGreaterThanOrEqual(1);
     expect(restored.rowsRestored.jobs).toBe(1);
     expect(restored.rowsRestored.incidents).toBe(1);
+    expect(restored.rowsRestored.variations).toBe(1);
 
     // Row equality
     const { eq } = await import("drizzle-orm");
@@ -129,10 +135,28 @@ describe("backup tarball — round trip", () => {
     expect(jobRow[0]!.name).toBe('Site "Alpha"\nLine2');
     const incRow = await db.select().from(incidents).where(eq(incidents.id, inc.id));
     expect(incRow[0]!.title).toBe("Strange title with, comma\nand newline");
+    const varRow = await db.select().from(variations).where(eq(variations.id, variation.id));
+    expect(varRow[0]!.description).toBe("Extra footing");
 
     // Upload byte-equality
     const restoredPhoto = await readFile(join(uploadsDir, "incidents", inc.id, "photo.png"));
     expect(Buffer.compare(restoredPhoto, photoBytes)).toBe(0);
+  });
+});
+
+describe("backup tarball — table coverage", () => {
+  it("backs up every table in the migrated schema", async () => {
+    const { db } = await import("@/db");
+    const { sql } = await import("drizzle-orm");
+    const { TABLES_IN_RESTORE_ORDER } = await import("@/lib/backup");
+    const rows = (await db.execute(sql`
+      SELECT table_name FROM information_schema.tables
+      WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    `)) as unknown as { table_name: string }[];
+    const missing = rows
+      .map((r) => r.table_name)
+      .filter((t) => !t.startsWith("__") && !TABLES_IN_RESTORE_ORDER.includes(t));
+    expect(missing).toEqual([]);
   });
 });
 
